@@ -16,8 +16,12 @@
         .option.selected { border-color: #007bff; background: #007bff; color: white; }
         .submit-btn { background: #28a745; color: white; padding: 15px 30px; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; margin-top: 30px; }
         .submit-btn:hover { background: #218838; }
+        .submit-btn:disabled { background: #6c757d; cursor: not-allowed; }
         .text-input { width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px; font-size: 16px; margin: 10px 0; }
         .success-banner { background: #d4edda; color: #155724; padding: 15px; margin: 20px 0; border-radius: 5px; border: 1px solid #c3e6cb; text-align: center; font-weight: bold; }
+        .completion-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; }
+        .completion-content { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 40px; border-radius: 10px; text-align: center; max-width: 500px; }
+        .progress-info { background: #f8f9fa; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #007bff; }
     </style>
 </head>
 <body>
@@ -26,18 +30,21 @@
     <div class="container">
         <div class="success-banner">
             ✅ SUCCESS: Quiz Interface Loaded Correctly!<br>
-            Template: quiz.html | Access Code: {{ access_code }}
+            Access Code: {{ access_code }} | Questions: {{ questions|length }}
         </div>
         
         <h1>Accounting & Finance Assessment</h1>
         <p>Professional interview evaluation - 45 minutes</p>
-        <p><strong>Access Code:</strong> {{ access_code }}</p>
-        <p><strong>Questions:</strong> {{ questions|length if questions else 0 }}</p>
+        
+        <div class="progress-info">
+            <strong>Progress:</strong> <span id="answered-count">0</span> of {{ questions|length }} questions answered
+            <br><strong>Time Remaining:</strong> <span id="time-display">45:00</span>
+        </div>
 
         <div id="questions">
             {% if questions %}
                 {% for question in questions %}
-                <div class="question">
+                <div class="question" id="question-{{ question.id }}">
                     <div class="question-title">Question {{ loop.index }}: {{ question.question }}</div>
                     
                     {% if question.type == 'text_input' %}
@@ -67,16 +74,31 @@
             {% endif %}
         </div>
 
-        <button class="submit-btn" onclick="submitQuiz()">Submit Quiz</button>
+        <button class="submit-btn" onclick="submitQuiz()" id="submit-btn">Submit Quiz</button>
+    </div>
+
+    <!-- Completion Modal -->
+    <div class="completion-modal" id="completion-modal">
+        <div class="completion-content">
+            <h2>🎉 Quiz Completed!</h2>
+            <p id="completion-message">Processing your results...</p>
+            <div id="completion-details"></div>
+            <button onclick="goHome()" style="background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; margin-top: 20px; cursor: pointer;">
+                Return to Home
+            </button>
+        </div>
     </div>
 
     <script>
         const accessCode = '{{ access_code }}';
         const answers = {};
+        const totalQuestions = {{ questions|length }};
         let timeLeft = 2700; // 45 minutes
+        let isSubmitting = false;
 
         console.log('✅ Quiz interface loaded successfully');
         console.log('Access Code:', accessCode);
+        console.log('Total Questions:', totalQuestions);
 
         function updateTimer() {
             const minutes = Math.floor(timeLeft / 60);
@@ -84,6 +106,8 @@
             const display = minutes + ':' + (seconds < 10 ? '0' : '') + seconds;
             
             const timerElement = document.getElementById('timer');
+            const timeDisplayElement = document.getElementById('time-display');
+            
             if (timerElement) {
                 timerElement.textContent = 'Time: ' + display;
                 
@@ -98,10 +122,26 @@
                 }
             }
             
+            if (timeDisplayElement) {
+                timeDisplayElement.textContent = display;
+            }
+            
             timeLeft--;
         }
 
+        function updateProgress() {
+            const answeredCount = Object.keys(answers).length;
+            const progressElement = document.getElementById('answered-count');
+            if (progressElement) {
+                progressElement.textContent = answeredCount;
+            }
+            
+            console.log(`Progress: ${answeredCount}/${totalQuestions} questions answered`);
+        }
+
         function selectOption(questionId, optionIndex) {
+            if (isSubmitting) return;
+            
             console.log('Selected option:', questionId, optionIndex);
             
             // Clear previous selections for this question
@@ -114,47 +154,74 @@
                 selectedOption.classList.add('selected');
             }
             
-            // Save answer
+            // Save answer locally
             answers[questionId] = optionIndex;
+            updateProgress();
             
-            // Send to server
-            fetch('/submit_answer', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    access_code: accessCode,
-                    question_id: questionId,
-                    answer: optionIndex
-                })
-            }).then(response => response.json())
-              .then(data => console.log('Answer saved:', data))
-              .catch(error => console.error('Error saving answer:', error));
+            // Send to server immediately
+            saveAnswerToServer(questionId, optionIndex);
         }
 
         function selectTextAnswer(questionId, value) {
-            console.log('Text answer:', questionId, value);
-            answers[questionId] = value;
+            if (isSubmitting) return;
             
-            // Send to server
+            console.log('Text answer:', questionId, value);
+            
+            // Save answer locally
+            answers[questionId] = value;
+            updateProgress();
+            
+            // Send to server immediately
+            saveAnswerToServer(questionId, value);
+        }
+
+        function saveAnswerToServer(questionId, answer) {
             fetch('/submit_answer', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     access_code: accessCode,
                     question_id: questionId,
-                    answer: value
+                    answer: answer
                 })
-            }).then(response => response.json())
-              .then(data => console.log('Answer saved:', data))
-              .catch(error => console.error('Error saving answer:', error));
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('✅ Answer saved successfully:', questionId, answer);
+                } else {
+                    console.error('❌ Failed to save answer:', data.error);
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error saving answer:', error);
+            });
         }
 
         function submitQuiz() {
-            if (Object.keys(answers).length === 0) {
-                if (!confirm('You have not answered any questions. Are you sure you want to submit?')) {
+            if (isSubmitting) {
+                console.log('Quiz already being submitted...');
+                return;
+            }
+            
+            // Confirm submission
+            const answeredCount = Object.keys(answers).length;
+            if (answeredCount < totalQuestions) {
+                const unanswered = totalQuestions - answeredCount;
+                if (!confirm(`You have ${unanswered} unanswered questions. Are you sure you want to submit?`)) {
                     return;
                 }
             }
+            
+            isSubmitting = true;
+            const submitBtn = document.getElementById('submit-btn');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Submitting...';
+            }
+            
+            console.log('🔄 Submitting quiz...');
+            console.log('Final answers:', answers);
             
             fetch('/submit_quiz', {
                 method: 'POST',
@@ -163,32 +230,88 @@
             })
             .then(response => response.json())
             .then(data => {
+                console.log('📤 Quiz submission response:', data);
+                
                 if (data.success) {
-                    alert('Quiz completed! Your score: ' + data.score + '/' + data.total + ' (' + data.percentage + '%)');
-                    window.location.href = '/';
+                    showCompletionModal(data);
                 } else {
                     alert('Error submitting quiz: ' + (data.error || 'Unknown error'));
+                    isSubmitting = false;
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Submit Quiz';
+                    }
                 }
             })
             .catch(error => {
-                console.error('Error submitting quiz:', error);
-                alert('Error submitting quiz. Please try again.');
+                console.error('❌ Error submitting quiz:', error);
+                alert('Network error submitting quiz. Please try again.');
+                isSubmitting = false;
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Submit Quiz';
+                }
             });
         }
 
+        function showCompletionModal(results) {
+            const modal = document.getElementById('completion-modal');
+            const message = document.getElementById('completion-message');
+            const details = document.getElementById('completion-details');
+            
+            if (modal && message && details) {
+                message.textContent = 'Thank you for completing the assessment!';
+                
+                const percentage = results.percentage || 0;
+                let gradeColor = '#dc3545'; // Red for low scores
+                if (percentage >= 70) gradeColor = '#28a745'; // Green for high scores
+                else if (percentage >= 50) gradeColor = '#ffc107'; // Yellow for medium scores
+                
+                details.innerHTML = `
+                    <div style="margin: 20px 0; padding: 20px; border-radius: 8px; background: #f8f9fa;">
+                        <h3>Your Results:</h3>
+                        <p><strong>Score:</strong> ${results.score}/${results.total}</p>
+                        <p><strong>Percentage:</strong> <span style="color: ${gradeColor}; font-weight: bold; font-size: 24px;">${percentage}%</span></p>
+                        <p><strong>Questions Answered:</strong> ${Object.keys(answers).length}/${totalQuestions}</p>
+                        <hr>
+                        <p><em>Your results have been saved. Please contact your administrator for detailed feedback.</em></p>
+                    </div>
+                `;
+                
+                modal.style.display = 'block';
+                
+                // Auto-hide after 30 seconds
+                setTimeout(() => {
+                    goHome();
+                }, 30000);
+            }
+        }
+
+        function goHome() {
+            window.location.href = '/';
+        }
+
         // Start timer
-        setInterval(updateTimer, 1000);
+        const timerInterval = setInterval(updateTimer, 1000);
         updateTimer(); // Initialize immediately
         
         // Prevent page refresh
         window.addEventListener('beforeunload', function(e) {
-            if (Object.keys(answers).length > 0) {
+            if (Object.keys(answers).length > 0 && !isSubmitting) {
                 e.preventDefault();
                 e.returnValue = 'Are you sure you want to leave? Your progress will be lost.';
             }
         });
 
-        console.log('Quiz ready!');
+        // Auto-save answers periodically
+        setInterval(() => {
+            if (!isSubmitting && Object.keys(answers).length > 0) {
+                console.log('🔄 Auto-saving progress...');
+                // Answers are already saved individually, this is just a log
+            }
+        }, 30000); // Every 30 seconds
+
+        console.log('✅ Quiz ready! You can start answering questions.');
     </script>
 </body>
 </html>
