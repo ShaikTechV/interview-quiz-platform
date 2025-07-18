@@ -1,5 +1,5 @@
 """
-Professional Quiz Platform in Python Flask
+Professional Quiz Platform in Python Flask with Postgres Database
 Deploy directly to Heroku from PyCharm
 """
 
@@ -11,9 +11,70 @@ import secrets
 import os
 import random
 import string
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import urllib.parse
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
+
+# Database connection
+def get_db_connection():
+    """Get database connection using Heroku DATABASE_URL"""
+    database_url = os.environ.get('DATABASE_URL')
+    if database_url:
+        # Parse the DATABASE_URL
+        url = urllib.parse.urlparse(database_url)
+        conn = psycopg2.connect(
+            database=url.path[1:],
+            user=url.username,
+            password=url.password,
+            host=url.hostname,
+            port=url.port,
+            cursor_factory=RealDictCursor
+        )
+        return conn
+    else:
+        # For local development (fallback)
+        return None
+
+def init_database():
+    """Initialize database tables"""
+    try:
+        conn = get_db_connection()
+        if conn:
+            cur = conn.cursor()
+            
+            # Create quiz_sessions table
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS quiz_sessions (
+                    access_code VARCHAR(10) PRIMARY KEY,
+                    start_time TIMESTAMP NOT NULL,
+                    questions_data TEXT NOT NULL,
+                    answers_data TEXT DEFAULT '{}',
+                    completed BOOLEAN DEFAULT FALSE,
+                    end_time TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Create index for faster queries
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_quiz_sessions_completed 
+                ON quiz_sessions(completed, start_time)
+            """)
+            
+            conn.commit()
+            cur.close()
+            conn.close()
+            print("Database initialized successfully")
+            return True
+    except Exception as e:
+        print(f"Database initialization error: {str(e)}")
+        return False
+
+# Initialize database on app start
+init_database()
 
 # Quiz data - your converted questions
 QUIZ_DATA = {
@@ -126,9 +187,6 @@ QUIZ_DATA = {
     ]
 }
 
-# Store active quiz sessions - Global dictionary
-quiz_sessions = {}
-
 @app.route('/')
 def home():
     return render_template('index.html')
@@ -139,32 +197,35 @@ def start_quiz():
         # Generate a 6-character access code
         access_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
         
-        session_data = {
-            'access_code': access_code,
-            'start_time': datetime.now(),
-            'questions': QUIZ_DATA['questions'].copy(),
-            'current_question': 0,
-            'answers': {},
-            'completed': False
-        }
+        # Prepare questions (shuffle for security)
+        questions = QUIZ_DATA['questions'].copy()
+        random.shuffle(questions)
         
-        # Shuffle questions for security
-        random.shuffle(session_data['questions'])
-        
-        # Store in global sessions dictionary
-        global quiz_sessions
-        quiz_sessions[access_code] = session_data
-        
-        # Debug logging
-        print(f"Created quiz session with code: {access_code}")
-        print(f"Total active sessions: {len(quiz_sessions)}")
-        print(f"Session stored successfully: {access_code in quiz_sessions}")
-        
-        return jsonify({
-            'success': True,
-            'access_code': access_code,
-            'quiz_url': request.url_root + 'quiz/' + access_code
-        })
+        # Store in database
+        conn = get_db_connection()
+        if conn:
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO quiz_sessions (access_code, start_time, questions_data)
+                VALUES (%s, %s, %s)
+            """, (access_code, datetime.now(), json.dumps(questions)))
+            
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            print(f"Created quiz session with code: {access_code}")
+            
+            return jsonify({
+                'success': True,
+                'access_code': access_code,
+                'quiz_url': request.url_root + 'quiz/' + access_code
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Database connection failed'
+            })
         
     except Exception as e:
         print(f"Error creating quiz session: {str(e)}")
@@ -175,34 +236,56 @@ def start_quiz():
 
 @app.route('/quiz/<access_code>')
 def quiz(access_code):
-    global quiz_sessions
-    
-    print(f"Quiz access attempt - Code: {access_code}")
-    print(f"Available sessions: {list(quiz_sessions.keys())}")
-    
-    if access_code not in quiz_sessions:
-        error_msg = f"Invalid access code: {access_code}"
-        if quiz_sessions:
-            error_msg += f". Available codes: {list(quiz_sessions.keys())}"
-        else:
-            error_msg += ". No active quiz sessions found."
-        print(error_msg)
-        return error_msg, 404
-    
-    session_data = quiz_sessions[access_code]
-    
-    # Check if time expired
-    elapsed = datetime.now() - session_data['start_time']
-    if elapsed.total_seconds() > QUIZ_DATA['time_limit']:
-        session_data['completed'] = True
-        print(f"Quiz session {access_code} has expired")
-        return f"Quiz session {access_code} has expired. Time limit: {QUIZ_DATA['time_limit']/60} minutes", 410
-    
-    print(f"Loading quiz for session: {access_code}")
-    return render_template('quiz.html', 
-                         quiz_data=QUIZ_DATA,
-                         questions=session_data['questions'],
-                         access_code=access_code)
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return "Database connection failed", 500
+            
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT access_code, start_time, questions_data, completed
+            FROM quiz_sessions 
+            WHERE access_code = %s
+        """, (access_code,))
+        
+        session_data = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if not session_data:
+            return f"Invalid access code: {access_code}", 404
+        
+        # Check if quiz is completed
+        if session_data['completed']:
+            return f"Quiz session {access_code} has already been completed", 410
+        
+        # Check if time expired
+        elapsed = datetime.now() - session_data['start_time']
+        if elapsed.total_seconds() > QUIZ_DATA['time_limit']:
+            # Mark as completed due to timeout
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE quiz_sessions 
+                SET completed = TRUE, end_time = %s 
+                WHERE access_code = %s
+            """, (datetime.now(), access_code))
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            return f"Quiz session {access_code} has expired. Time limit: {QUIZ_DATA['time_limit']/60} minutes", 410
+        
+        questions = json.loads(session_data['questions_data'])
+        
+        return render_template('quiz.html', 
+                             quiz_data=QUIZ_DATA,
+                             questions=questions,
+                             access_code=access_code)
+                             
+    except Exception as e:
+        print(f"Error loading quiz: {str(e)}")
+        return f"Error loading quiz: {str(e)}", 500
 
 @app.route('/submit_answer', methods=['POST'])
 def submit_answer():
@@ -212,16 +295,41 @@ def submit_answer():
         question_id = data.get('question_id')
         answer = data.get('answer')
         
-        global quiz_sessions
-        
-        if access_code in quiz_sessions:
-            quiz_sessions[access_code]['answers'][question_id] = answer
-            print(f"Answer saved for session {access_code}, question {question_id}: {answer}")
-            return jsonify({'success': True})
-        else:
-            print(f"Invalid session for answer submission: {access_code}")
-            return jsonify({'success': False, 'error': 'Invalid session'})
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'error': 'Database connection failed'})
             
+        cur = conn.cursor()
+        
+        # Get current answers
+        cur.execute("""
+            SELECT answers_data FROM quiz_sessions 
+            WHERE access_code = %s AND completed = FALSE
+        """, (access_code,))
+        
+        result = cur.fetchone()
+        if not result:
+            cur.close()
+            conn.close()
+            return jsonify({'success': False, 'error': 'Invalid session'})
+        
+        # Update answers
+        current_answers = json.loads(result['answers_data'] or '{}')
+        current_answers[str(question_id)] = answer
+        
+        cur.execute("""
+            UPDATE quiz_sessions 
+            SET answers_data = %s 
+            WHERE access_code = %s
+        """, (json.dumps(current_answers), access_code))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        print(f"Answer saved for session {access_code}, question {question_id}: {answer}")
+        return jsonify({'success': True})
+        
     except Exception as e:
         print(f"Error submitting answer: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
@@ -232,27 +340,63 @@ def submit_quiz():
         data = request.json
         access_code = data.get('access_code')
         
-        global quiz_sessions
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'error': 'Database connection failed'})
+            
+        cur = conn.cursor()
         
-        if access_code in quiz_sessions:
-            session_data = quiz_sessions[access_code]
-            session_data['completed'] = True
-            session_data['end_time'] = datetime.now()
-            
-            score = calculate_score(session_data)
-            total = len(session_data['questions'])
-            
-            print(f"Quiz completed for session {access_code}. Score: {score}/{total}")
-            
-            return jsonify({
-                'success': True,
-                'score': score,
-                'total': total,
-                'percentage': round((score/total)*100, 1)
-            })
-        else:
+        # Get session data
+        cur.execute("""
+            SELECT questions_data, answers_data, completed
+            FROM quiz_sessions 
+            WHERE access_code = %s
+        """, (access_code,))
+        
+        result = cur.fetchone()
+        if not result:
+            cur.close()
+            conn.close()
             return jsonify({'success': False, 'error': 'Invalid session'})
-            
+        
+        if result['completed']:
+            cur.close()
+            conn.close()
+            return jsonify({'success': False, 'error': 'Quiz already completed'})
+        
+        # Mark as completed
+        cur.execute("""
+            UPDATE quiz_sessions 
+            SET completed = TRUE, end_time = %s 
+            WHERE access_code = %s
+        """, (datetime.now(), access_code))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        # Calculate score
+        questions = json.loads(result['questions_data'])
+        answers = json.loads(result['answers_data'] or '{}')
+        
+        score = 0
+        for question in questions:
+            question_id = str(question['id'])
+            if question_id in answers:
+                if answers[question_id] == question['correct']:
+                    score += 1
+        
+        total = len(questions)
+        
+        print(f"Quiz completed for session {access_code}. Score: {score}/{total}")
+        
+        return jsonify({
+            'success': True,
+            'score': score,
+            'total': total,
+            'percentage': round((score/total)*100, 1)
+        })
+        
     except Exception as e:
         print(f"Error submitting quiz: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
@@ -261,19 +405,36 @@ def submit_quiz():
 def admin():
     """Admin dashboard to monitor quiz sessions"""
     try:
-        global quiz_sessions
-        active_sessions = []
+        conn = get_db_connection()
+        if not conn:
+            return "Database connection failed", 500
+            
+        cur = conn.cursor()
         
-        for code, session in quiz_sessions.items():
-            if not session['completed']:
-                elapsed = datetime.now() - session['start_time']
-                time_remaining = QUIZ_DATA['time_limit'] - elapsed.total_seconds()
-                
+        # Get active sessions
+        cur.execute("""
+            SELECT access_code, start_time, answers_data
+            FROM quiz_sessions 
+            WHERE completed = FALSE 
+            ORDER BY start_time DESC
+        """)
+        
+        sessions = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        active_sessions = []
+        for session in sessions:
+            elapsed = datetime.now() - session['start_time']
+            time_remaining = QUIZ_DATA['time_limit'] - elapsed.total_seconds()
+            
+            if time_remaining > 0:
+                answers = json.loads(session['answers_data'] or '{}')
                 active_sessions.append({
-                    'access_code': code,
+                    'access_code': session['access_code'],
                     'start_time': session['start_time'].strftime('%H:%M:%S'),
                     'time_remaining': max(0, int(time_remaining)),
-                    'questions_answered': len(session['answers'])
+                    'questions_answered': len(answers)
                 })
         
         return render_template('admin.html', sessions=active_sessions)
@@ -282,56 +443,116 @@ def admin():
         print(f"Error loading admin dashboard: {str(e)}")
         return f"Error loading admin dashboard: {str(e)}", 500
 
-def calculate_score(session_data):
-    """Calculate quiz score"""
-    try:
-        score = 0
-        for question in session_data['questions']:
-            question_id = question['id']
-            if question_id in session_data['answers']:
-                if session_data['answers'][question_id] == question['correct']:
-                    score += 1
-        return score
-    except Exception as e:
-        print(f"Error calculating score: {str(e)}")
-        return 0
-
 @app.route('/get_time_remaining/<access_code>')
 def get_time_remaining(access_code):
     """API endpoint for timer updates"""
     try:
-        global quiz_sessions
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'})
+            
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT start_time, completed
+            FROM quiz_sessions 
+            WHERE access_code = %s
+        """, (access_code,))
         
-        if access_code in quiz_sessions:
-            session_data = quiz_sessions[access_code]
-            elapsed = datetime.now() - session_data['start_time']
-            time_remaining = QUIZ_DATA['time_limit'] - elapsed.total_seconds()
-            
-            return jsonify({
-                'time_remaining': max(0, int(time_remaining)),
-                'expired': time_remaining <= 0
-            })
-        else:
+        result = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if not result:
             return jsonify({'error': 'Invalid session'})
-            
+        
+        if result['completed']:
+            return jsonify({'error': 'Quiz completed'})
+        
+        elapsed = datetime.now() - result['start_time']
+        time_remaining = QUIZ_DATA['time_limit'] - elapsed.total_seconds()
+        
+        return jsonify({
+            'time_remaining': max(0, int(time_remaining)),
+            'expired': time_remaining <= 0
+        })
+        
     except Exception as e:
         print(f"Error getting time remaining: {str(e)}")
         return jsonify({'error': str(e)})
 
 @app.route('/test')
 def test():
-    """Test route to verify Flask is working"""
-    return f"Flask app is working on Heroku! Time: {datetime.now()}"
+    """Test route to verify Flask and database are working"""
+    try:
+        conn = get_db_connection()
+        if conn:
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) as session_count FROM quiz_sessions")
+            result = cur.fetchone()
+            cur.close()
+            conn.close()
+            return f"Flask app is working on Heroku! Time: {datetime.now()}, Sessions in DB: {result['session_count']}"
+        else:
+            return f"Flask app is working but database connection failed! Time: {datetime.now()}"
+    except Exception as e:
+        return f"Flask app is working but database error: {str(e)}. Time: {datetime.now()}"
 
 @app.route('/debug_sessions')
 def debug_sessions():
-    """Debug route to check active sessions"""
-    global quiz_sessions
-    return {
-        'total_sessions': len(quiz_sessions),
-        'session_codes': list(quiz_sessions.keys()),
-        'timestamp': datetime.now().isoformat()
-    }
+    """Debug route to check active sessions in database"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return {'error': 'Database connection failed'}
+            
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT access_code, start_time, completed, 
+                   (EXTRACT(EPOCH FROM (NOW() - start_time))) as elapsed_seconds
+            FROM quiz_sessions 
+            ORDER BY start_time DESC 
+            LIMIT 10
+        """)
+        
+        sessions = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        return {
+            'total_sessions': len(sessions),
+            'sessions': [dict(session) for session in sessions],
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {'error': str(e)}
+
+# Cleanup old sessions (optional background task)
+@app.route('/cleanup_old_sessions')
+def cleanup_old_sessions():
+    """Remove sessions older than 24 hours"""
+    try:
+        conn = get_db_connection()
+        if conn:
+            cur = conn.cursor()
+            
+            # Delete sessions older than 24 hours
+            cur.execute("""
+                DELETE FROM quiz_sessions 
+                WHERE start_time < NOW() - INTERVAL '24 hours'
+            """)
+            
+            deleted_count = cur.rowcount
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            return f"Cleaned up {deleted_count} old sessions"
+        else:
+            return "Database connection failed"
+            
+    except Exception as e:
+        return f"Cleanup error: {str(e)}"
 
 # Error handlers
 @app.errorhandler(404)
