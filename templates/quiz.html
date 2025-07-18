@@ -7,19 +7,24 @@
         .container { max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; }
         .timer { position: fixed; top: 20px; right: 20px; background: #dc3545; color: white; padding: 15px 20px; border-radius: 8px; font-weight: bold; z-index: 1000; }
         .timer.warning { background: #fd7e14; animation: pulse 1s infinite; }
+        .timer.critical { background: #dc3545; animation: pulse 0.5s infinite; }
         @keyframes pulse { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0.7; } }
         .question { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background: #f8f9fa; }
-        .question-title { font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #333; }
+        .question-title { font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #333; white-space: pre-line; }
         .options { margin: 15px 0; }
         .option { margin: 10px 0; padding: 12px; border: 2px solid #ddd; border-radius: 5px; cursor: pointer; transition: all 0.3s; }
         .option:hover { border-color: #007bff; background: #f0f8ff; }
         .option.selected { border-color: #007bff; background: #007bff; color: white; }
         .submit-btn { background: #28a745; color: white; padding: 15px 30px; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; margin-top: 30px; }
         .submit-btn:hover { background: #218838; }
+        .connection-status { position: fixed; top: 80px; right: 20px; padding: 8px 12px; border-radius: 5px; font-size: 12px; }
+        .connection-status.online { background: #d4edda; color: #155724; }
+        .connection-status.offline { background: #f8d7da; color: #721c24; }
     </style>
 </head>
 <body>
     <div class="timer" id="timer">45:00</div>
+    <div class="connection-status online" id="connectionStatus">Timer synced</div>
     
     <div class="container">
         <h1>{{ quiz_data.title }}</h1>
@@ -51,40 +56,96 @@
         const accessCode = '{{ access_code }}';
         const answers = {};
         let timeLeft = {{ quiz_data.time_limit }};
+        let timerInterval;
+        let syncInterval;
+        let lastSyncTime = Date.now();
 
-        function updateTimer() {
-            const minutes = Math.floor(timeLeft / 60);
-            const seconds = timeLeft % 60;
-            const display = minutes + ':' + (seconds < 10 ? '0' : '') + seconds;
+        function updateTimerDisplay(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            const display = minutes + ':' + (secs < 10 ? '0' : '') + secs;
             
             const timerElement = document.getElementById('timer');
             timerElement.textContent = 'Time: ' + display;
             
-            if (timeLeft <= 300) { // Last 5 minutes
+            timerElement.className = 'timer';
+            if (seconds <= 300) {
                 timerElement.classList.add('warning');
             }
+            if (seconds <= 60) {
+                timerElement.classList.add('critical');
+            }
             
-            if (timeLeft <= 0) {
+            if (seconds <= 0) {
                 alert('Time is up! Quiz will be submitted automatically.');
                 submitQuiz();
                 return;
             }
+        }
+
+        function syncTimeWithServer() {
+            fetch('/get_time_remaining/' + accessCode)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error('Timer sync error:', data.error);
+                        document.getElementById('connectionStatus').textContent = 'Sync error';
+                        document.getElementById('connectionStatus').className = 'connection-status offline';
+                    } else {
+                        timeLeft = data.time_remaining;
+                        lastSyncTime = Date.now();
+                        updateTimerDisplay(timeLeft);
+                        
+                        document.getElementById('connectionStatus').textContent = 'Timer synced';
+                        document.getElementById('connectionStatus').className = 'connection-status online';
+                        
+                        if (data.expired) {
+                            alert('Time is up! Quiz will be submitted automatically.');
+                            submitQuiz();
+                            return;
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Timer sync failed:', error);
+                    document.getElementById('connectionStatus').textContent = 'Connection lost';
+                    document.getElementById('connectionStatus').className = 'connection-status offline';
+                });
+        }
+
+        function startLocalCountdown() {
+            if (timerInterval) clearInterval(timerInterval);
             
-            timeLeft--;
+            timerInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - lastSyncTime) / 1000);
+                const currentTime = Math.max(0, timeLeft - elapsed);
+                updateTimerDisplay(currentTime);
+                
+                if (currentTime <= 0) {
+                    clearInterval(timerInterval);
+                    alert('Time is up! Quiz will be submitted automatically.');
+                    submitQuiz();
+                }
+            }, 1000);
+        }
+
+        function handleVisibilityChange() {
+            if (document.hidden) {
+                console.log('Tab hidden - will sync when visible again');
+            } else {
+                console.log('Tab visible - syncing time');
+                syncTimeWithServer();
+            }
         }
 
         function selectOption(questionId, optionIndex) {
-            // Clear previous selections for this question
-            const options = document.querySelectorAll(`[id^="option-${questionId}-"]`);
+            const options = document.querySelectorAll('[id^="option-' + questionId + '-"]');
             options.forEach(opt => opt.classList.remove('selected'));
             
-            // Select new option
-            document.getElementById(`option-${questionId}-${optionIndex}`).classList.add('selected');
+            document.getElementById('option-' + questionId + '-' + optionIndex).classList.add('selected');
             
-            // Save answer
             answers[questionId] = optionIndex;
             
-            // Send to server
             fetch('/submit_answer', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -93,10 +154,15 @@
                     question_id: questionId,
                     answer: optionIndex
                 })
+            }).catch(error => {
+                console.error('Error saving answer:', error);
             });
         }
 
         function submitQuiz() {
+            if (timerInterval) clearInterval(timerInterval);
+            if (syncInterval) clearInterval(syncInterval);
+            
             fetch('/submit_quiz', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -105,19 +171,42 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert(`Quiz completed! Your score: ${data.score}/${data.total} (${data.percentage}%)`);
+                    alert('Quiz completed! Your score: ' + data.score + '/' + data.total + ' (' + data.percentage + '%)');
                     window.location.href = '/';
+                } else {
+                    alert('Error submitting quiz: ' + (data.error || 'Unknown error'));
                 }
+            })
+            .catch(error => {
+                console.error('Error submitting quiz:', error);
+                alert('Error submitting quiz. Please try again.');
             });
         }
 
-        // Start timer
-        setInterval(updateTimer, 1000);
+        function initializeTimer() {
+            syncTimeWithServer();
+            startLocalCountdown();
+            syncInterval = setInterval(syncTimeWithServer, 30000);
+            document.addEventListener('visibilitychange', handleVisibilityChange);
+            window.addEventListener('focus', syncTimeWithServer);
+            window.addEventListener('beforeunload', function(e) {
+                const confirmationMessage = 'Are you sure you want to leave? Your quiz progress will be lost.';
+                e.returnValue = confirmationMessage;
+                return confirmationMessage;
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', initializeTimer);
         
-        // Prevent page refresh
-        window.addEventListener('beforeunload', function(e) {
-            e.preventDefault();
-            e.returnValue = '';
+        window.addEventListener('online', () => {
+            console.log('Connection restored - syncing time');
+            syncTimeWithServer();
+        });
+        
+        window.addEventListener('offline', () => {
+            console.log('Connection lost');
+            document.getElementById('connectionStatus').textContent = 'Offline';
+            document.getElementById('connectionStatus').className = 'connection-status offline';
         });
     </script>
 </body>
