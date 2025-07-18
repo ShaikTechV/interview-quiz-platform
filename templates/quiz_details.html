@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Quiz Results - {{ session.access_code }}</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f5f5f5; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .back-btn { background: #6c757d; color: white; padding: 10px 20px; border: none; border-radius: 5px; text-decoration: none; }
+        .print-btn { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
+        .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 20px; margin: 30px 0; }
+        .summary-card { text-align: center; padding: 20px; border-radius: 8px; border: 1px solid #ddd; }
+        .summary-number { font-size: 28px; font-weight: bold; margin-bottom: 5px; }
+        .summary-label { color: #666; font-size: 14px; }
+        .score-high { color: #28a745; }
+        .score-medium { color: #ffc107; }
+        .score-low { color: #dc3545; }
+        .question-result { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }
+        .question-header { font-weight: bold; margin-bottom: 15px; color: #333; }
+        .question-text { margin: 10px 0; padding: 15px; background: #f8f9fa; border-radius: 5px; }
+        .answer-section { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 15px 0; }
+        .answer-box { padding: 15px; border-radius: 5px; }
+        .user-answer { background: #e3f2fd; border-left: 4px solid #2196f3; }
+        .correct-answer { background: #e8f5e8; border-left: 4px solid #4caf50; }
+        .incorrect { background: #ffebee; border-left: 4px solid #f44336; }
+        .correct { background: #e8f5e8; border-left: 4px solid #4caf50; }
+        .status-icon { font-size: 20px; margin-right: 10px; }
+        .explanation { margin-top: 10px; padding: 15px; background: #fff3cd; border-radius: 5px; border-left: 4px solid #ffc107; }
+        @media print {
+            .header { margin-bottom: 20px; }
+            .back-btn, .print-btn { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="/admin" class="back-btn">← Back to Admin</a>
+            <button class="print-btn" onclick="window.print()">Print Results</button>
+        </div>
+
+        <h1>Quiz Results: {{ session.access_code }}</h1>
+        
+        <div style="margin: 20px 0;">
+            <strong>Start Time:</strong> {{ session.start_time.strftime('%Y-%m-%d %H:%M:%S') if session.start_time else 'N/A' }}<br>
+            <strong>End Time:</strong> {{ session.end_time.strftime('%Y-%m-%d %H:%M:%S') if session.end_time else 'N/A' }}
+        </div>
+
+        <div class="summary">
+            <div class="summary-card">
+                <div class="summary-number">{{ session.score or 0 }}</div>
+                <div class="summary-label">Correct Answers</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-number">{{ session.total_questions or 0 }}</div>
+                <div class="summary-label">Total Questions</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-number {% if session.score and session.total_questions %}
+                    {% set percentage = (session.score / session.total_questions * 100) %}
+                    {% if percentage >= 70 %}score-high{% elif percentage >= 50 %}score-medium{% else %}score-low{% endif %}
+                {% endif %}">
+                    {% if session.score and session.total_questions %}
+                        {{ "%.1f"|format(session.score / session.total_questions * 100) }}%
+                    {% else %}
+                        0.0%
+                    {% endif %}
+                </div>
+                <div class="summary-label">Score</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-number">{{ question_results|selectattr('is_correct')|list|length if question_results else 0 }}</div>
+                <div class="summary-label">Correct</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-number">{{ question_results|rejectattr('is_correct')|selectattr('user_answer', 'ne', -1)|list|length if question_results else 0 }}</div>
+                <div class="summary-label">Incorrect</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-number">{{ question_results|selectattr('user_answer', 'eq', -1)|list|length if question_results else 0 }}</div>
+                <div class="summary-label">Unanswered</div>
+            </div>
+        </div>
+
+        <h3>Question-by-Question Results</h3>
+        
+        {% if question_results %}
+            {% for result in question_results %}
+            <div class="question-result {% if result.is_correct %}correct{% else %}incorrect{% endif %}">
+                <div class="question-header">
+                    <span class="status-icon">
+                        {% if result.is_correct %}✅{% elif result.user_answer == -1 %}❓{% else %}❌{% endif %}
+                    </span>
+                    Question {{ result.question_number }}: 
+                    {% if result.is_correct %}Correct{% elif result.user_answer == -1 %}Not Answered{% else %}Incorrect{% endif %}
+                </div>
+                
+                <div class="question-text">{{ result.question_text }}</div>
+                
+                {% if result.question_type == 'text_input' %}
+                    <div class="answer-section">
+                        <div class="answer-box user-answer">
+                            <strong>Your Answer:</strong><br>
+                            {{ result.user_answer_text }}
+                        </div>
+                        <div class="answer-box correct-answer">
+                            <strong>Correct Answer(s):</strong><br>
+                            {{ result.correct_answer_text }}
+                        </div>
+                    </div>
+                    
+                    {% if result.explanation %}
+                    <div class="explanation">
+                        <strong>Explanation:</strong> {{ result.explanation }}
+                    </div>
+                    {% endif %}
+                    
+                {% else %}
+                    {% if result.options %}
+                    <div style="margin: 15px 0;">
+                        {% for option in result.options %}
+                            {% if option != "N/A" %}
+                            <div style="margin: 5px 0; padding: 8px; border-radius: 3px; 
+                                {% if loop.index0 == result.user_answer and loop.index0 == result.correct_answer %}background: #d4edda; border-left: 4px solid #28a745;
+                                {% elif loop.index0 == result.user_answer %}background: #f8d7da; border-left: 4px solid #dc3545;
+                                {% elif loop.index0 == result.correct_answer %}background: #d4edda; border-left: 4px solid #28a745;
+                                {% else %}background: #f8f9fa;{% endif %}">
+                                {{ option }}
+                                {% if loop.index0 == result.user_answer %}<span style="float: right; font-weight: bold;">Your Answer</span>{% endif %}
+                                {% if loop.index0 == result.correct_answer %}<span style="float: right; font-weight: bold; color: #28a745;">Correct</span>{% endif %}
+                            </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                {% endif %}
+            </div>
+            {% endfor %}
+        {% else %}
+            <p>No question results available.</p>
+        {% endif %}
+    </div>
+</body>
+</html>
