@@ -1,213 +1,171 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>{{ quiz_data.title }}</title>
+    <title>Quiz Details - {{ session.access_code }}</title>
     <style>
         body { font-family: Arial, sans-serif; background: #f5f5f5; margin: 0; padding: 20px; }
-        .container { max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; }
-        .timer { position: fixed; top: 20px; right: 20px; background: #dc3545; color: white; padding: 15px 20px; border-radius: 8px; font-weight: bold; z-index: 1000; }
-        .timer.warning { background: #fd7e14; animation: pulse 1s infinite; }
-        .timer.critical { background: #dc3545; animation: pulse 0.5s infinite; }
-        @keyframes pulse { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0.7; } }
-        .question { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background: #f8f9fa; }
-        .question-title { font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #333; white-space: pre-line; }
+        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; }
+        .header { margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #e9ecef; }
+        .summary { display: flex; gap: 30px; margin-bottom: 30px; }
+        .summary-item { text-align: center; padding: 15px; background: #f8f9fa; border-radius: 8px; min-width: 120px; }
+        .summary-number { font-size: 24px; font-weight: bold; }
+        .summary-label { font-size: 12px; color: #6c757d; margin-top: 5px; }
+        .score-excellent { color: #28a745; }
+        .score-good { color: #fd7e14; }
+        .score-poor { color: #dc3545; }
+        .question { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }
+        .question.correct { border-left: 5px solid #28a745; background: #f8fff8; }
+        .question.incorrect { border-left: 5px solid #dc3545; background: #fff8f8; }
+        .question.unanswered { border-left: 5px solid #6c757d; background: #f8f9fa; }
+        .question-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .question-number { background: #007bff; color: white; padding: 5px 10px; border-radius: 15px; font-size: 12px; font-weight: bold; }
+        .question-type { background: #e9ecef; color: #6c757d; padding: 3px 8px; border-radius: 3px; font-size: 11px; margin-left: 10px; }
+        .question-status { font-weight: bold; margin-left: auto; }
+        .question-status.correct { color: #28a745; }
+        .question-status.incorrect { color: #dc3545; }
+        .question-status.unanswered { color: #6c757d; }
+        .question-text { font-weight: bold; margin-bottom: 15px; color: #333; white-space: pre-line; }
         .options { margin: 15px 0; }
-        .option { margin: 10px 0; padding: 12px; border: 2px solid #ddd; border-radius: 5px; cursor: pointer; transition: all 0.3s; }
-        .option:hover { border-color: #007bff; background: #f0f8ff; }
-        .option.selected { border-color: #007bff; background: #007bff; color: white; }
-        .submit-btn { background: #28a745; color: white; padding: 15px 30px; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; margin-top: 30px; }
-        .submit-btn:hover { background: #218838; }
-        .connection-status { position: fixed; top: 80px; right: 20px; padding: 8px 12px; border-radius: 5px; font-size: 12px; }
-        .connection-status.online { background: #d4edda; color: #155724; }
-        .connection-status.offline { background: #f8d7da; color: #721c24; }
+        .option { margin: 8px 0; padding: 10px; border-radius: 5px; }
+        .option.user-answer { background: #e3f2fd; border: 2px solid #2196f3; }
+        .option.correct-answer { background: #e8f5e8; border: 2px solid #4caf50; }
+        .option.user-incorrect { background: #ffebee; border: 2px solid #f44336; }
+        .text-answer { margin: 15px 0; }
+        .text-answer-box { padding: 10px; border-radius: 5px; margin: 5px 0; }
+        .user-text-answer { background: #e3f2fd; border: 2px solid #2196f3; }
+        .correct-text-answer { background: #e8f5e8; border: 2px solid #4caf50; }
+        .user-text-incorrect { background: #ffebee; border: 2px solid #f44336; }
+        .explanation { background: #f8f9fa; padding: 15px; border-radius: 5px; margin-top: 15px; border-left: 4px solid #007bff; }
+        .explanation-title { font-weight: bold; color: #007bff; margin-bottom: 5px; }
+        .back-btn { background: #6c757d; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 20px; text-decoration: none; display: inline-block; }
+        .back-btn:hover { background: #545b62; }
+        .print-btn { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; margin-left: 10px; }
+        .print-btn:hover { background: #0056b3; }
     </style>
 </head>
 <body>
-    <div class="timer" id="timer">45:00</div>
-    <div class="connection-status online" id="connectionStatus">Timer synced</div>
-    
     <div class="container">
-        <h1>{{ quiz_data.title }}</h1>
-        <p>{{ quiz_data.description }}</p>
-        <p><strong>Access Code:</strong> {{ access_code }} | <strong>Questions:</strong> {{ questions|length }}</p>
+        <a href="/admin" class="back-btn">← Back to Admin</a>
+        <button class="print-btn" onclick="window.print()">Print Results</button>
+        
+        <div class="header">
+            <h1>Quiz Results: {{ session.access_code }}</h1>
+            <p><strong>Start Time:</strong> {{ session.start_time.strftime('%Y-%m-%d %H:%M:%S') if session.start_time else 'N/A' }}</p>
+            <p><strong>End Time:</strong> {{ session.end_time.strftime('%Y-%m-%d %H:%M:%S') if session.end_time else 'N/A' }}</p>
+            {% if session.start_time and session.end_time %}
+            <p><strong>Duration:</strong> {{ ((session.end_time - session.start_time).total_seconds() // 60)|int }} minutes</p>
+            {% endif %}
+        </div>
 
-        <div id="questions">
-            {% for question in questions %}
-            <div class="question">
-                <div class="question-title">Q{{ loop.index }}: {{ question.question }}</div>
+        <div class="summary">
+            <div class="summary-item">
+                <div class="summary-number">{{ session.score or 0 }}</div>
+                <div class="summary-label">Correct Answers</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-number">{{ session.total_questions or 0 }}</div>
+                <div class="summary-label">Total Questions</div>
+            </div>
+            <div class="summary-item">
+                {% set percentage = ((session.score or 0) / (session.total_questions or 1) * 100)|round(1) %}
+                <div class="summary-number {% if percentage >= 80 %}score-excellent{% elif percentage >= 60 %}score-good{% else %}score-poor{% endif %}">
+                    {{ percentage }}%
+                </div>
+                <div class="summary-label">Score</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-number">{{ question_results|selectattr('is_correct')|list|length }}</div>
+                <div class="summary-label">Correct</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-number">{{ question_results|rejectattr('is_correct')|selectattr('user_answer', 'ne', -1)|list|length }}</div>
+                <div class="summary-label">Incorrect</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-number">{{ question_results|selectattr('user_answer', 'eq', -1)|list|length }}</div>
+                <div class="summary-label">Unanswered</div>
+            </div>
+        </div>
+
+        <h3>Question-by-Question Results</h3>
+        
+        {% for result in question_results %}
+        <div class="question {% if result.user_answer == -1 %}unanswered{% elif result.is_correct %}correct{% else %}incorrect{% endif %}">
+            <div class="question-header">
+                <div>
+                    <span class="question-number">Q{{ result.question_number }}</span>
+                    <span class="question-type">
+                        {% if result.question_type == 'multiple_choice' %}
+                            Multiple Choice
+                        {% elif result.question_type == 'true_false' %}
+                            True/False
+                        {% elif result.question_type == 'text_input' %}
+                            Calculation/Text Input
+                        {% else %}
+                            Question
+                        {% endif %}
+                    </span>
+                </div>
+                <span class="question-status {% if result.user_answer == -1 %}unanswered{% elif result.is_correct %}correct{% else %}incorrect{% endif %}">
+                    {% if result.user_answer == -1 %}
+                        Not Answered
+                    {% elif result.is_correct %}
+                        ✓ Correct
+                    {% else %}
+                        ✗ Incorrect
+                    {% endif %}
+                </span>
+            </div>
+            
+            <div class="question-text">{{ result.question_text }}</div>
+            
+            {% if result.question_type == 'text_input' %}
+                <!-- Text input question results -->
+                <div class="text-answer">
+                    <div class="text-answer-box {% if result.user_answer == -1 %}unanswered{% elif result.is_correct %}user-text-answer{% else %}user-text-incorrect{% endif %}">
+                        <strong>Your Answer:</strong> {{ result.user_answer_text }}
+                    </div>
+                    <div class="text-answer-box correct-text-answer">
+                        <strong>Correct Answer:</strong> {{ result.correct_answer_text }}
+                    </div>
+                </div>
+                
+                {% if result.explanation %}
+                <div class="explanation">
+                    <div class="explanation-title">Explanation:</div>
+                    {{ result.explanation }}
+                </div>
+                {% endif %}
+            {% else %}
+                <!-- Multiple choice or True/False question results -->
                 <div class="options">
-                    {% for option in question.options %}
+                    {% for option in result.options %}
                     {% if option != "N/A" %}
-                    <div class="option" onclick="selectOption({{ question.id }}, {{ loop.index0 }})" 
-                         id="option-{{ question.id }}-{{ loop.index0 }}">
+                    <div class="option 
+                        {% if loop.index0 == result.user_answer and loop.index0 == result.correct_answer %}user-answer correct-answer
+                        {% elif loop.index0 == result.user_answer %}user-answer{% if not result.is_correct %} user-incorrect{% endif %}
+                        {% elif loop.index0 == result.correct_answer %}correct-answer
+                        {% endif %}">
                         {{ option }}
+                        {% if loop.index0 == result.user_answer %}
+                            <strong> [Your Answer]</strong>
+                        {% endif %}
+                        {% if loop.index0 == result.correct_answer %}
+                            <strong> [Correct Answer]</strong>
+                        {% endif %}
                     </div>
                     {% endif %}
                     {% endfor %}
                 </div>
-            </div>
-            {% endfor %}
+            {% endif %}
         </div>
-
-        <button class="submit-btn" onclick="submitQuiz()">Submit Quiz</button>
+        {% endfor %}
     </div>
 
-    <script>
-        const accessCode = '{{ access_code }}';
-        const answers = {};
-        let timeLeft = {{ quiz_data.time_limit }};
-        let timerInterval;
-        let syncInterval;
-        let lastSyncTime = Date.now();
-
-        function updateTimerDisplay(seconds) {
-            const minutes = Math.floor(seconds / 60);
-            const secs = seconds % 60;
-            const display = minutes + ':' + (secs < 10 ? '0' : '') + secs;
-            
-            const timerElement = document.getElementById('timer');
-            timerElement.textContent = 'Time: ' + display;
-            
-            timerElement.className = 'timer';
-            if (seconds <= 300) {
-                timerElement.classList.add('warning');
-            }
-            if (seconds <= 60) {
-                timerElement.classList.add('critical');
-            }
-            
-            if (seconds <= 0) {
-                alert('Time is up! Quiz will be submitted automatically.');
-                submitQuiz();
-                return;
-            }
-        }
-
-        function syncTimeWithServer() {
-            fetch('/get_time_remaining/' + accessCode)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error) {
-                        console.error('Timer sync error:', data.error);
-                        document.getElementById('connectionStatus').textContent = 'Sync error';
-                        document.getElementById('connectionStatus').className = 'connection-status offline';
-                    } else {
-                        timeLeft = data.time_remaining;
-                        lastSyncTime = Date.now();
-                        updateTimerDisplay(timeLeft);
-                        
-                        document.getElementById('connectionStatus').textContent = 'Timer synced';
-                        document.getElementById('connectionStatus').className = 'connection-status online';
-                        
-                        if (data.expired) {
-                            alert('Time is up! Quiz will be submitted automatically.');
-                            submitQuiz();
-                            return;
-                        }
-                    }
-                })
-                .catch(error => {
-                    console.error('Timer sync failed:', error);
-                    document.getElementById('connectionStatus').textContent = 'Connection lost';
-                    document.getElementById('connectionStatus').className = 'connection-status offline';
-                });
-        }
-
-        function startLocalCountdown() {
-            if (timerInterval) clearInterval(timerInterval);
-            
-            timerInterval = setInterval(() => {
-                const elapsed = Math.floor((Date.now() - lastSyncTime) / 1000);
-                const currentTime = Math.max(0, timeLeft - elapsed);
-                updateTimerDisplay(currentTime);
-                
-                if (currentTime <= 0) {
-                    clearInterval(timerInterval);
-                    alert('Time is up! Quiz will be submitted automatically.');
-                    submitQuiz();
-                }
-            }, 1000);
-        }
-
-        function handleVisibilityChange() {
-            if (document.hidden) {
-                console.log('Tab hidden - will sync when visible again');
-            } else {
-                console.log('Tab visible - syncing time');
-                syncTimeWithServer();
-            }
-        }
-
-        function selectOption(questionId, optionIndex) {
-            const options = document.querySelectorAll('[id^="option-' + questionId + '-"]');
-            options.forEach(opt => opt.classList.remove('selected'));
-            
-            document.getElementById('option-' + questionId + '-' + optionIndex).classList.add('selected');
-            
-            answers[questionId] = optionIndex;
-            
-            fetch('/submit_answer', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    access_code: accessCode,
-                    question_id: questionId,
-                    answer: optionIndex
-                })
-            }).catch(error => {
-                console.error('Error saving answer:', error);
-            });
-        }
-
-        function submitQuiz() {
-            if (timerInterval) clearInterval(timerInterval);
-            if (syncInterval) clearInterval(syncInterval);
-            
-            fetch('/submit_quiz', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ access_code: accessCode })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert('Quiz completed! Your score: ' + data.score + '/' + data.total + ' (' + data.percentage + '%)');
-                    window.location.href = '/';
-                } else {
-                    alert('Error submitting quiz: ' + (data.error || 'Unknown error'));
-                }
-            })
-            .catch(error => {
-                console.error('Error submitting quiz:', error);
-                alert('Error submitting quiz. Please try again.');
-            });
-        }
-
-        function initializeTimer() {
-            syncTimeWithServer();
-            startLocalCountdown();
-            syncInterval = setInterval(syncTimeWithServer, 30000);
-            document.addEventListener('visibilitychange', handleVisibilityChange);
-            window.addEventListener('focus', syncTimeWithServer);
-            window.addEventListener('beforeunload', function(e) {
-                const confirmationMessage = 'Are you sure you want to leave? Your quiz progress will be lost.';
-                e.returnValue = confirmationMessage;
-                return confirmationMessage;
-            });
-        }
-
-        document.addEventListener('DOMContentLoaded', initializeTimer);
-        
-        window.addEventListener('online', () => {
-            console.log('Connection restored - syncing time');
-            syncTimeWithServer();
-        });
-        
-        window.addEventListener('offline', () => {
-            console.log('Connection lost');
-            document.getElementById('connectionStatus').textContent = 'Offline';
-            document.getElementById('connectionStatus').className = 'connection-status offline';
-        });
-    </script>
+    <style media="print">
+        .back-btn, .print-btn { display: none; }
+        body { background: white; }
+        .container { box-shadow: none; }
+    </style>
 </body>
 </html>
