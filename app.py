@@ -1,6 +1,6 @@
 """
 Professional Quiz Platform in Python Flask with Postgres Database
-Deploy directly to Heroku from PyCharm - FIXED VERSION WITH DB MIGRATION
+FIXED VERSION - Correct routing for candidates vs admin
 """
 
 from flask import Flask, render_template, request, jsonify, session
@@ -437,6 +437,7 @@ def start_quiz():
 
 @app.route('/quiz/<access_code>')
 def quiz(access_code):
+    """CANDIDATE ROUTE - Shows the actual quiz questions for taking the test"""
     try:
         conn = get_db_connection()
         if not conn:
@@ -454,11 +455,11 @@ def quiz(access_code):
         conn.close()
         
         if not session_data:
-            return f"Invalid access code: {access_code}", 404
+            return f"<h1>Invalid Access Code</h1><p>Quiz session <strong>{access_code}</strong> not found.</p><p><a href='/'>Return to Home</a></p>", 404
         
         # Check if quiz is completed
         if session_data['completed']:
-            return f"Quiz session {access_code} has already been completed", 410
+            return f"<h1>Quiz Already Completed</h1><p>Quiz session <strong>{access_code}</strong> has already been completed.</p><p>Contact your administrator for results.</p><p><a href='/'>Return to Home</a></p>", 410
         
         # Check if time expired
         elapsed = datetime.now() - session_data['start_time']
@@ -475,10 +476,14 @@ def quiz(access_code):
             cur.close()
             conn.close()
             
-            return f"Quiz session {access_code} has expired. Time limit: {QUIZ_DATA['time_limit']/60} minutes", 410
+            return f"<h1>Quiz Time Expired</h1><p>Quiz session <strong>{access_code}</strong> has expired.</p><p>Time limit: {QUIZ_DATA['time_limit']/60} minutes</p><p><a href='/'>Return to Home</a></p>", 410
         
+        # Load the actual quiz questions for the candidate
         questions = json.loads(session_data['questions_data'])
         
+        print(f"Loading quiz for candidate with access code: {access_code}")
+        
+        # This should show the QUIZ QUESTIONS, not results
         return render_template('quiz.html', 
                              quiz_data=QUIZ_DATA,
                              questions=questions,
@@ -486,7 +491,7 @@ def quiz(access_code):
                              
     except Exception as e:
         print(f"Error loading quiz: {str(e)}")
-        return f"Error loading quiz: {str(e)}", 500
+        return f"<h1>Error Loading Quiz</h1><p>Error: {str(e)}</p><p><a href='/'>Return to Home</a></p>", 500
 
 @app.route('/submit_answer', methods=['POST'])
 def submit_answer():
@@ -610,7 +615,7 @@ def submit_quiz():
 
 @app.route('/admin')
 def admin():
-    """Admin dashboard to monitor quiz sessions and view results"""
+    """ADMIN ROUTE - Dashboard to monitor quiz sessions and view results"""
     try:
         conn = get_db_connection()
         if not conn:
@@ -690,7 +695,7 @@ def admin():
 
 @app.route('/quiz_details/<access_code>')
 def quiz_details(access_code):
-    """View detailed results for a specific quiz session"""
+    """ADMIN ONLY ROUTE - View detailed results for a specific quiz session"""
     try:
         conn = get_db_connection()
         if not conn:
@@ -712,7 +717,7 @@ def quiz_details(access_code):
             return f"Quiz session {access_code} not found", 404
         
         if not session['completed']:
-            return f"Quiz session {access_code} is still active", 400
+            return f"Quiz session {access_code} is still active. Results not available yet.", 400
         
         # Parse data
         questions = json.loads(session['questions_data'])
@@ -767,6 +772,8 @@ def quiz_details(access_code):
                     'correct_answer_text': correct_answer_text,
                     'is_correct': is_correct
                 })
+        
+        print(f"Admin viewing detailed results for session: {access_code}")
         
         return render_template('quiz_details.html', 
                              session=session, 
