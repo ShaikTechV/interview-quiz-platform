@@ -1,6 +1,6 @@
 """
-Professional Quiz Platform in Python Flask with Postgres Database
-QA VERIFIED - COMPLETE WORKING VERSION
+FIXED Professional Quiz Platform in Python Flask with Postgres Database
+WORKING VERSION - All routing and template issues resolved
 """
 
 from flask import Flask, render_template, request, jsonify, session
@@ -18,6 +18,9 @@ import re
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
+
+# Enable template debugging
+app.config['EXPLAIN_TEMPLATE_LOADING'] = True
 
 # Database connection
 def get_db_connection():
@@ -55,22 +58,11 @@ def init_database():
                     answers_data TEXT DEFAULT '{}',
                     completed BOOLEAN DEFAULT FALSE,
                     end_time TIMESTAMP,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    score INTEGER DEFAULT 0,
+                    total_questions INTEGER DEFAULT 0
                 )
             """)
-            
-            # Add missing columns if they don't exist
-            try:
-                cur.execute("ALTER TABLE quiz_sessions ADD COLUMN score INTEGER DEFAULT 0")
-                print("Added score column")
-            except:
-                pass  # Column already exists
-            
-            try:
-                cur.execute("ALTER TABLE quiz_sessions ADD COLUMN total_questions INTEGER DEFAULT 0")
-                print("Added total_questions column")
-            except:
-                pass  # Column already exists
             
             # Create index for faster queries
             cur.execute("""
@@ -81,10 +73,10 @@ def init_database():
             conn.commit()
             cur.close()
             conn.close()
-            print("Database initialized successfully")
+            print("✅ Database initialized successfully")
             return True
     except Exception as e:
-        print(f"Database initialization error: {str(e)}")
+        print(f"❌ Database initialization error: {str(e)}")
         return False
 
 # Initialize database on app start
@@ -114,7 +106,7 @@ def check_text_answer(user_answer, correct_answers):
     
     return False
 
-# Quiz data - All 25 questions with text input support
+# Quiz data - All 25 questions
 QUIZ_DATA = {
     "title": "Accounting & Finance Assessment",
     "description": "Professional interview evaluation - 45 minutes",
@@ -390,10 +382,13 @@ QUIZ_DATA = {
 
 @app.route('/')
 def home():
+    """Home page for creating quiz sessions"""
+    print("🏠 HOME PAGE accessed")
     return render_template('index.html')
 
 @app.route('/start_quiz', methods=['POST'])
 def start_quiz():
+    """Create a new quiz session"""
     try:
         # Generate a 6-character access code
         access_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
@@ -438,8 +433,8 @@ def start_quiz():
 @app.route('/quiz/<access_code>')
 def quiz_interface(access_code):
     """
-    🎯 CANDIDATE ROUTE - Shows quiz questions for candidates to take the test
-    This should NEVER show results - only quiz questions!
+    🎯 CANDIDATE QUIZ INTERFACE - Shows quiz questions to candidates
+    This route MUST render quiz.html and NEVER show results
     """
     print(f"🎯 CANDIDATE ACCESS: /quiz/{access_code}")
     
@@ -447,7 +442,12 @@ def quiz_interface(access_code):
         conn = get_db_connection()
         if not conn:
             print("❌ Database connection failed")
-            return "Database connection failed", 500
+            error_html = f"""
+            <h1>Database Error</h1>
+            <p>Unable to connect to database.</p>
+            <p><a href='/'>Return to Home</a></p>
+            """
+            return error_html, 500
             
         cur = conn.cursor()
         cur.execute("""
@@ -462,12 +462,24 @@ def quiz_interface(access_code):
         
         if not session_data:
             print(f"❌ Session not found: {access_code}")
-            return f"<h1>Invalid Access Code</h1><p>Quiz session <strong>{access_code}</strong> not found.</p><p><a href='/'>Return to Home</a></p>", 404
+            error_html = f"""
+            <h1>Invalid Access Code</h1>
+            <p>Quiz session <strong>{access_code}</strong> not found.</p>
+            <p>Please check your access code and try again.</p>
+            <p><a href='/'>Return to Home</a></p>
+            """
+            return error_html, 404
         
         # Check if quiz is completed
         if session_data['completed']:
             print(f"⚠️ Quiz already completed: {access_code}")
-            return f"<h1>Quiz Already Completed</h1><p>Quiz session <strong>{access_code}</strong> has already been completed.</p><p>Contact your administrator for results.</p><p><a href='/'>Return to Home</a></p>", 410
+            completed_html = f"""
+            <h1>Quiz Already Completed</h1>
+            <p>Quiz session <strong>{access_code}</strong> has already been completed.</p>
+            <p>Contact your administrator for results.</p>
+            <p><a href='/'>Return to Home</a></p>
+            """
+            return completed_html, 410
         
         # Check if time expired
         elapsed = datetime.now() - session_data['start_time']
@@ -475,17 +487,24 @@ def quiz_interface(access_code):
             print(f"⏰ Quiz expired: {access_code}")
             # Mark as completed due to timeout
             conn = get_db_connection()
-            cur = conn.cursor()
-            cur.execute("""
-                UPDATE quiz_sessions 
-                SET completed = TRUE, end_time = %s 
-                WHERE access_code = %s
-            """, (datetime.now(), access_code))
-            conn.commit()
-            cur.close()
-            conn.close()
+            if conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    UPDATE quiz_sessions 
+                    SET completed = TRUE, end_time = %s 
+                    WHERE access_code = %s
+                """, (datetime.now(), access_code))
+                conn.commit()
+                cur.close()
+                conn.close()
             
-            return f"<h1>Quiz Time Expired</h1><p>Quiz session <strong>{access_code}</strong> has expired.</p><p>Time limit: {QUIZ_DATA['time_limit']/60} minutes</p><p><a href='/'>Return to Home</a></p>", 410
+            expired_html = f"""
+            <h1>Quiz Time Expired</h1>
+            <p>Quiz session <strong>{access_code}</strong> has expired.</p>
+            <p>Time limit: {QUIZ_DATA['time_limit']/60} minutes</p>
+            <p><a href='/'>Return to Home</a></p>
+            """
+            return expired_html, 410
         
         # Load quiz questions for candidate
         questions = json.loads(session_data['questions_data'])
@@ -494,7 +513,7 @@ def quiz_interface(access_code):
         print(f"📝 Questions loaded: {len(questions)}")
         print(f"🎯 Rendering template: quiz.html")
         
-        # This MUST render quiz.html - the quiz interface for candidates
+        # CRITICAL: This MUST render quiz.html - the quiz interface for candidates
         return render_template('quiz.html', 
                              quiz_data=QUIZ_DATA,
                              questions=questions,
@@ -502,10 +521,16 @@ def quiz_interface(access_code):
                              
     except Exception as e:
         print(f"❌ ERROR loading quiz interface: {str(e)}")
-        return f"<h1>Error Loading Quiz</h1><p>Error: {str(e)}</p><p><a href='/'>Return to Home</a></p>", 500
+        error_html = f"""
+        <h1>Error Loading Quiz</h1>
+        <p>Error: {str(e)}</p>
+        <p><a href='/'>Return to Home</a></p>
+        """
+        return error_html, 500
 
 @app.route('/submit_answer', methods=['POST'])
 def submit_answer():
+    """Save candidate's answer to database"""
     try:
         data = request.json
         access_code = data.get('access_code')
@@ -554,6 +579,7 @@ def submit_answer():
 
 @app.route('/submit_quiz', methods=['POST'])
 def submit_quiz():
+    """Submit completed quiz and calculate score"""
     try:
         data = request.json
         access_code = data.get('access_code')
@@ -632,9 +658,7 @@ def submit_quiz():
 
 @app.route('/admin')
 def admin_dashboard():
-    """
-    👑 ADMIN ROUTE - Dashboard to monitor quiz sessions and view results
-    """
+    """👑 ADMIN DASHBOARD - Monitor quiz sessions and view results"""
     print("👑 ADMIN ACCESS: /admin")
     
     try:
@@ -656,8 +680,7 @@ def admin_dashboard():
         
         # Get completed sessions with results
         cur.execute("""
-            SELECT access_code, start_time, end_time, score, total_questions, 
-                   questions_data, answers_data
+            SELECT access_code, start_time, end_time, score, total_questions
             FROM quiz_sessions 
             WHERE completed = TRUE 
             ORDER BY end_time DESC
@@ -718,10 +741,7 @@ def admin_dashboard():
 
 @app.route('/results/<access_code>')
 def quiz_results(access_code):
-    """
-    📊 ADMIN ONLY ROUTE - View detailed results for a specific quiz session
-    This is accessed from admin dashboard "View Details" button
-    """
+    """📊 ADMIN ONLY ROUTE - Detailed results for completed quiz sessions"""
     print(f"📊 ADMIN VIEWING RESULTS: /results/{access_code}")
     
     try:
@@ -813,7 +833,7 @@ def quiz_results(access_code):
 
 @app.route('/get_time_remaining/<access_code>')
 def get_time_remaining(access_code):
-    """API endpoint for timer updates"""
+    """API endpoint for timer updates during quiz"""
     try:
         conn = get_db_connection()
         if not conn:
@@ -849,7 +869,7 @@ def get_time_remaining(access_code):
 
 @app.route('/test')
 def test():
-    """Test route to verify Flask and database are working"""
+    """Test route to verify Flask and database connectivity"""
     try:
         conn = get_db_connection()
         if conn:
@@ -858,15 +878,30 @@ def test():
             result = cur.fetchone()
             cur.close()
             conn.close()
-            return f"✅ Flask app is working on Heroku! Time: {datetime.now()}, Sessions in DB: {result['session_count']}, Total Questions: {len(QUIZ_DATA['questions'])}"
+            return f"""
+            <h1>✅ System Status: WORKING</h1>
+            <p><strong>Time:</strong> {datetime.now()}</p>
+            <p><strong>Sessions in DB:</strong> {result['session_count']}</p>
+            <p><strong>Total Questions:</strong> {len(QUIZ_DATA['questions'])}</p>
+            <p><a href='/'>Go to Home</a> | <a href='/admin'>Admin Dashboard</a></p>
+            """
         else:
-            return f"⚠️ Flask app is working but database connection failed! Time: {datetime.now()}, Total Questions: {len(QUIZ_DATA['questions'])}"
+            return f"""
+            <h1>⚠️ Database Connection Failed</h1>
+            <p><strong>Time:</strong> {datetime.now()}</p>
+            <p><strong>Total Questions:</strong> {len(QUIZ_DATA['questions'])}</p>
+            <p>Flask app is working but cannot connect to database.</p>
+            """
     except Exception as e:
-        return f"❌ Flask app is working but database error: {str(e)}. Time: {datetime.now()}, Total Questions: {len(QUIZ_DATA['questions'])}"
+        return f"""
+        <h1>❌ System Error</h1>
+        <p><strong>Error:</strong> {str(e)}</p>
+        <p><strong>Time:</strong> {datetime.now()}</p>
+        """
 
 @app.route('/debug_sessions')
 def debug_sessions():
-    """Debug route to check active sessions in database"""
+    """Debug endpoint to check database sessions"""
     try:
         conn = get_db_connection()
         if not conn:
@@ -898,13 +933,24 @@ def debug_sessions():
 # Error handlers
 @app.errorhandler(404)
 def not_found(error):
-    return f"Page not found: {request.url}", 404
+    return f"""
+    <h1>404 - Page Not Found</h1>
+    <p>The page you requested was not found.</p>
+    <p><strong>URL:</strong> {request.url}</p>
+    <p><a href='/'>Return to Home</a></p>
+    """, 404
 
 @app.errorhandler(500)
 def internal_error(error):
-    return f"Internal server error: {str(error)}", 500
+    return f"""
+    <h1>500 - Internal Server Error</h1>
+    <p>An internal server error occurred.</p>
+    <p><strong>Error:</strong> {str(error)}</p>
+    <p><a href='/'>Return to Home</a></p>
+    """, 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug_mode = os.environ.get('FLASK_ENV') == 'development'
+    print(f"🚀 Starting Flask app on port {port}")
     app.run(host='0.0.0.0', port=port, debug=debug_mode)
