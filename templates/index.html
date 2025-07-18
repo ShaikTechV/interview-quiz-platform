@@ -15,6 +15,8 @@
         .instructions { text-align: left; margin: 20px 0; }
         .instructions ul { margin-left: 20px; }
         .instructions li { margin: 8px 0; color: #555; }
+        .error-message { background: #f8d7da; color: #721c24; padding: 15px; border-radius: 5px; margin: 20px 0; border: 1px solid #f5c6cb; }
+        .success-message { background: #d4edda; color: #155724; padding: 15px; border-radius: 5px; margin: 20px 0; border: 1px solid #c3e6cb; }
     </style>
 </head>
 <body>
@@ -27,13 +29,19 @@
         <div class="card">
             <h3>Host a New Quiz Session</h3>
             <p>Create a new 45-minute assessment session for candidates.</p>
-            <button class="btn" onclick="createQuiz()">Create Quiz Session</button>
+            <button class="btn" id="create-quiz-btn">Create Quiz Session</button>
+            
+            <div id="error-message" class="error-message" style="display: none;">
+                <strong>Error:</strong> <span id="error-text"></span>
+            </div>
             
             <div id="quiz-created" style="display: none; margin-top: 20px;">
-                <h4>✅ Quiz Session Created!</h4>
-                <p><strong>Access Code:</strong> <span class="access-code" id="access-code"></span></p>
-                <p><strong>Quiz URL:</strong> <span id="quiz-url"></span></p>
-                <p><strong>Share these with your candidate</strong></p>
+                <div class="success-message">
+                    <h4>✅ Quiz Session Created Successfully!</h4>
+                    <p><strong>Access Code:</strong> <span class="access-code" id="access-code"></span></p>
+                    <p><strong>Quiz URL:</strong> <span id="quiz-url"></span></p>
+                    <p><strong>Share these with your candidate</strong></p>
+                </div>
             </div>
         </div>
 
@@ -42,4 +50,100 @@
             <div class="instructions">
                 <ul>
                     <li><strong>Duration:</strong> 45 minutes</li>
-                    <li
+                    <li><strong>Questions:</strong> 25 questions (Multiple choice, True/False, Calculations)</li>
+                    <li><strong>Requirements:</strong> Stable internet, updated browser, quiet environment</li>
+                    <li><strong>Materials:</strong> Calculator allowed for numerical questions</li>
+                    <li><strong>Monitoring:</strong> Video proctoring via separate video call</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Monitor Active Sessions</h3>
+            <p>View currently active quiz sessions and candidate progress.</p>
+            <button class="btn" onclick="window.open('/admin', '_blank')">Admin Dashboard</button>
+        </div>
+    </div>
+
+    <script>
+        // Debug: Log that script is loading
+        console.log('Script loading...');
+
+        // Function to show error messages
+        function showError(message) {
+            document.getElementById('error-text').textContent = message;
+            document.getElementById('error-message').style.display = 'block';
+            document.getElementById('quiz-created').style.display = 'none';
+        }
+
+        // Function to hide error messages
+        function hideError() {
+            document.getElementById('error-message').style.display = 'none';
+        }
+
+        // Main function to create quiz
+        function createQuiz() {
+            console.log('createQuiz function called');
+            hideError();
+            
+            // Disable button to prevent multiple clicks
+            const button = document.getElementById('create-quiz-btn');
+            const originalText = button.textContent;
+            button.disabled = true;
+            button.textContent = 'Creating Quiz...';
+
+            fetch('/start_quiz', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({})
+            })
+            .then(response => {
+                console.log('Response received:', response.status);
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Data received:', data);
+                if (data.success) {
+                    document.getElementById('access-code').textContent = data.access_code;
+                    document.getElementById('quiz-url').textContent = data.quiz_url;
+                    document.getElementById('quiz-created').style.display = 'block';
+                } else {
+                    showError(data.error || 'Failed to create quiz session');
+                }
+            })
+            .catch(error => {
+                console.error('Error creating quiz:', error);
+                showError('Failed to create quiz session: ' + error.message);
+            })
+            .finally(() => {
+                // Re-enable button
+                button.disabled = false;
+                button.textContent = originalText;
+            });
+        }
+
+        // Add event listener when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, adding event listener');
+            
+            const button = document.getElementById('create-quiz-btn');
+            if (button) {
+                button.addEventListener('click', createQuiz);
+                console.log('Event listener added successfully');
+            } else {
+                console.error('Create quiz button not found!');
+            }
+        });
+
+        // Also add onclick as backup
+        window.createQuiz = createQuiz;
+        
+        console.log('Script loaded successfully');
+    </script>
+</body>
+</html>
