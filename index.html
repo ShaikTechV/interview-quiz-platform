@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Interview Assessment Platform</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f5f5f5; margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        .header { text-align: center; margin-bottom: 40px; }
+        .title { color: #333; font-size: 28px; margin-bottom: 10px; }
+        .subtitle { color: #666; font-size: 18px; }
+        .card { background: #f8f9fa; padding: 30px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #007bff; }
+        .btn { background: #007bff; color: white; padding: 15px 30px; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; }
+        .btn:hover { background: #0056b3; }
+        .access-code { font-size: 24px; font-weight: bold; color: #007bff; margin: 20px 0; }
+        .instructions { text-align: left; margin: 20px 0; }
+        .instructions ul { margin-left: 20px; }
+        .instructions li { margin: 8px 0; color: #555; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">Interview Assessment Platform</h1>
+            <p class="subtitle">Professional Technical Evaluation</p>
+        </div>
+
+        <div class="card">
+            <h3>Host a New Quiz Session</h3>
+            <p>Create a new 45-minute assessment session for candidates.</p>
+            <button class="btn" onclick="createQuiz()">Create Quiz Session</button>
+
+            <div id="quiz-created" style="display: none; margin-top: 20px;">
+                <h4>✅ Quiz Session Created!</h4>
+                <p><strong>Access Code:</strong> <span class="access-code" id="access-code"></span></p>
+                <p><strong>Quiz URL:</strong> <span id="quiz-url"></span></p>
+                <p><strong>Share these with your candidate</strong></p>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Instructions for Candidates</h3>
+            <div class="instructions">
+                <ul>
+                    <li><strong>Duration:</strong> 45 minutes</li>
+                    <li><strong>Questions:</strong> 25 questions (Multiple choice, True/False, Calculations)</li>
+                    <li><strong>Requirements:</strong> Stable internet, updated browser, quiet environment</li>
+                    <li><strong>Materials:</strong> Calculator allowed for numerical questions</li>
+                    <li><strong>Monitoring:</strong> Video proctoring via separate video call</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Monitor Active Sessions</h3>
+            <p>View currently active quiz sessions and candidate progress.</p>
+            <button class="btn" onclick="window.open('/admin', '_blank')">Admin Dashboard</button>
+        </div>
+    </div>
+
+    <script>
+        function createQuiz() {
+            fetch('/start_quiz', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('access-code').textContent = data.access_code;
+                    document.getElementById('quiz-url').textContent = data.quiz_url;
+                    document.getElementById('quiz-created').style.display = 'block';
+                }
+            })
+            .catch(error => {
+                alert('Error creating quiz: ' + error);
+            });
+        }
+    </script>
+</body>
+</html>
