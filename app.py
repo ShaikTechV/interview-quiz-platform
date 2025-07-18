@@ -1,6 +1,6 @@
 """
 Professional Quiz Platform in Python Flask with Postgres Database
-Deploy directly to Heroku from PyCharm - FINAL VERSION WITH TEXT INPUT
+Deploy directly to Heroku from PyCharm - FIXED VERSION WITH DB MIGRATION
 """
 
 from flask import Flask, render_template, request, jsonify, session
@@ -40,13 +40,13 @@ def get_db_connection():
         return None
 
 def init_database():
-    """Initialize database tables"""
+    """Initialize database tables and add missing columns if needed"""
     try:
         conn = get_db_connection()
         if conn:
             cur = conn.cursor()
             
-            # Create quiz_sessions table
+            # Create quiz_sessions table with all required columns
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS quiz_sessions (
                     access_code VARCHAR(10) PRIMARY KEY,
@@ -55,11 +55,22 @@ def init_database():
                     answers_data TEXT DEFAULT '{}',
                     completed BOOLEAN DEFAULT FALSE,
                     end_time TIMESTAMP,
-                    score INTEGER DEFAULT 0,
-                    total_questions INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            
+            # Add missing columns if they don't exist
+            try:
+                cur.execute("ALTER TABLE quiz_sessions ADD COLUMN score INTEGER DEFAULT 0")
+                print("Added score column")
+            except:
+                pass  # Column already exists
+            
+            try:
+                cur.execute("ALTER TABLE quiz_sessions ADD COLUMN total_questions INTEGER DEFAULT 0")
+                print("Added total_questions column")
+            except:
+                pass  # Column already exists
             
             # Create index for faster queries
             cur.execute("""
