@@ -1,6 +1,6 @@
 """
 Professional Quiz Platform in Python Flask with Postgres Database
-Deploy directly to Heroku from PyCharm
+Deploy directly to Heroku from PyCharm - FINAL VERSION WITH TEXT INPUT
 """
 
 from flask import Flask, render_template, request, jsonify, session
@@ -14,6 +14,7 @@ import string
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import urllib.parse
+import re
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
@@ -54,6 +55,8 @@ def init_database():
                     answers_data TEXT DEFAULT '{}',
                     completed BOOLEAN DEFAULT FALSE,
                     end_time TIMESTAMP,
+                    score INTEGER DEFAULT 0,
+                    total_questions INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -76,7 +79,31 @@ def init_database():
 # Initialize database on app start
 init_database()
 
-# Quiz data - your converted questions
+# Helper function to check text answers
+def check_text_answer(user_answer, correct_answers):
+    """Check if user's text answer matches any of the correct answers"""
+    if not user_answer:
+        return False
+    
+    user_answer = str(user_answer).strip().lower()
+    
+    for correct in correct_answers:
+        correct = str(correct).strip().lower()
+        
+        # Exact match
+        if user_answer == correct:
+            return True
+        
+        # Remove common formatting
+        user_clean = re.sub(r'[%\s]', '', user_answer)
+        correct_clean = re.sub(r'[%\s]', '', correct)
+        
+        if user_clean == correct_clean:
+            return True
+    
+    return False
+
+# Quiz data - All 25 questions with text input support
 QUIZ_DATA = {
     "title": "Accounting & Finance Assessment",
     "description": "Professional interview evaluation - 45 minutes",
@@ -84,6 +111,7 @@ QUIZ_DATA = {
     "questions": [
         {
             "id": 1,
+            "type": "multiple_choice",
             "question": "Out of following which is not capital item?",
             "options": [
                 "(a) Computer set purchased",
@@ -95,6 +123,7 @@ QUIZ_DATA = {
         },
         {
             "id": 2,
+            "type": "multiple_choice",
             "question": "Salary paid to Mohan is debited to Mohan A/c. This error is",
             "options": [
                 "(a) Principle error",
@@ -106,83 +135,244 @@ QUIZ_DATA = {
         },
         {
             "id": 3,
-            "question": "Which of the following is a current asset?",
+            "type": "multiple_choice",
+            "question": "XYZ Co. failed to agree and the difference was put into suspense account. Pass the rectifying entry:",
             "options": [
-                "(a) Building",
-                "(b) Machinery",
-                "(c) Inventory",
-                "(d) Land"
+                "(a) Dr. Suspense A/c. 3000, Cr. Discount received A/c. 2000, Cr. Discount allowed a/c. 1000",
+                "(b) Dr. Discount received A/c. 2000, Dr. Discount allowed a/c. 1000, Cr. Suspense A/c. 3000",
+                "(c) No entry is required",
+                "(d) Any entry a or b"
             ],
-            "correct": 2
+            "correct": 0
         },
         {
             "id": 4,
-            "question": "The accounting equation is:",
+            "type": "multiple_choice",
+            "question": "Calculate the operating profit: Sales Rs. 10,00,000, Opening stock Rs. 1,00,000, Purchases Rs. 6,50,000, Closing stock Rs. 1,50,000, Office rent Rs. 45,000, Salaries Rs. 90,000",
             "options": [
-                "(a) Assets = Liabilities + Equity",
-                "(b) Assets = Liabilities - Equity",
-                "(c) Assets + Liabilities = Equity",
-                "(d) Assets - Equity = Liabilities"
+                "(a) Rs. 4,65,000",
+                "(b) Rs. 5,50,000",
+                "(c) Rs. 4,30,000",
+                "(d) Rs. 4,75,000"
             ],
             "correct": 0
         },
         {
             "id": 5,
-            "question": "Double entry bookkeeping means:",
+            "type": "multiple_choice",
+            "question": "Salaries due for the month of March will appear",
             "options": [
-                "(a) Recording transactions twice",
-                "(b) Every debit has a corresponding credit",
-                "(c) Using two sets of books",
-                "(d) Recording in two different periods"
+                "(a) On the receipt side of the cash book",
+                "(b) On the payment side of the cash book",
+                "(c) As a contra entry",
+                "(d) Nowhere in cash book"
+            ],
+            "correct": 3
+        },
+        {
+            "id": 6,
+            "type": "multiple_choice",
+            "question": "From the following information, determine amounts to be transferred to Income & Expenditure A/c: Subscription received Rs. 5,000, Subscription outstanding Rs. 2,500",
+            "options": [
+                "(a) Rs. 2,500",
+                "(b) Rs. 2,000",
+                "(c) Rs. 500",
+                "(d) Rs. 3,000"
+            ],
+            "correct": 0
+        },
+        {
+            "id": 7,
+            "type": "multiple_choice",
+            "question": "Opening balance: Proprietor's A/c. Rs. 50,000, Current year profit Rs. 4,50,000, Drawings Rs. 1,00,000. Calculate closing balance of Proprietor's A/c.",
+            "options": [
+                "(a) Rs. 5,00,000",
+                "(b) Rs. 4,00,000",
+                "(c) Rs. 6,00,000",
+                "(d) Rs. 7,00,000"
+            ],
+            "correct": 0
+        },
+        {
+            "id": 8,
+            "type": "multiple_choice",
+            "question": "Goods worth Rs.18,800 are destroyed by fire and the insurance company admits the claim for Rs.15,000. Loss by fire account will be",
+            "options": [
+                "(a) debited by Rs.18,800",
+                "(b) debited by Rs.3,800",
+                "(c) credited by Rs.18,800",
+                "(d) credited by Rs.3,800"
             ],
             "correct": 1
         },
         {
+            "id": 9,
+            "type": "multiple_choice",
+            "question": "Which one is correct?",
+            "options": [
+                "(a) Assets + Liabilities = Owner's equity",
+                "(b) Assets – Liabilities = Owner's equity",
+                "(c) Owner's equity + Assets = Liability",
+                "(d) None of the above"
+            ],
+            "correct": 1
+        },
+        {
+            "id": 10,
+            "type": "multiple_choice",
+            "question": "Advances given to Govt. Authority is shown as",
+            "options": [
+                "(a) Current assets",
+                "(b) Fixed assets",
+                "(c) Liability",
+                "(d) Capital"
+            ],
+            "correct": 0
+        },
+        {
+            "id": 11,
+            "type": "multiple_choice",
+            "question": "Health Club has 1,000 members. Annual fees for each member Rs.1,000. Rs.2 L received in advance, Rs.1 L in arrears. Amount to be credited to Income & Expenditure A/c:",
+            "options": [
+                "(a) Rs.8 L",
+                "(b) Rs.6 L",
+                "(c) Rs.10 L",
+                "(d) Rs.12 L"
+            ],
+            "correct": 1
+        },
+        {
+            "id": 12,
+            "type": "multiple_choice",
+            "question": "When sales Rs.300000, Purchase Rs.200000, Opening stock Rs.10000, Closing stock Rs.40000, what is gross profit?",
+            "options": [
+                "(a) Rs. 50,000",
+                "(b) Rs. 20,000",
+                "(c) Rs. 36,000",
+                "(d) Rs. 60,000"
+            ],
+            "correct": 0
+        },
+        {
+            "id": 13,
+            "type": "multiple_choice",
+            "question": "From the information, Vimal Ltd received from its branch: Goods sent to branch Rs. 5,00,000, Cash received from branch Rs. 2,00,000, Expenses of branch Rs. 1,00,000, Closing stock at branch Rs. 1,00,000. Branch adjustment account will show:",
+            "options": [
+                "(a) Rs. 3,00,000",
+                "(b) Rs. 2,00,000",
+                "(c) Rs. 1,00,000",
+                "(d) Rs. 4,00,000"
+            ],
+            "correct": 0
+        },
+        {
+            "id": 14,
+            "type": "multiple_choice",
+            "question": "What amount will be credited in income expenditure account for subscription: Subscription received Rs.10 L, Subscription due for previous year Rs.1 L, Subscription due for current year Rs.3 L, Subscription received in advance Rs.1 L",
+            "options": [
+                "(a) Rs. 10 L",
+                "(b) Rs. 12 L",
+                "(c) Rs. 14 L",
+                "(d) Rs. 11 L"
+            ],
+            "correct": 3
+        },
+        {
+            "id": 15,
+            "type": "multiple_choice",
+            "question": "Following information provided by ABC Club: Subscription received current year Rs.5 L, Subscription outstanding beginning Rs.2 L, Subscription outstanding end Rs.1 L, Subscription received in advance beginning Rs.1 L, Subscription received in advance end Rs.2 L. Amount to be credited:",
+            "options": [
+                "(a) Rs. 4 L",
+                "(b) Rs. 5 L",
+                "(c) Rs. 3 L",
+                "(d) Rs. 9 L"
+            ],
+            "correct": 0
+        },
+        {
             "id": 16,
+            "type": "true_false",
             "question": "Drawing decrease the assets and decrease the liability.\n\nEvaluate this statement as True or False.",
             "options": ["True", "False", "N/A", "N/A"],
             "correct": 1
         },
         {
             "id": 17,
+            "type": "true_false",
             "question": "A, B, C started joint venture. A brought rs.10000, B Rs.20000, C Rs.30000 and opened joint bank account. Rs.10000 will be credited in joint bank a/c. on the name of A.\n\nEvaluate this statement as True or False.",
             "options": ["True", "False", "N/A", "N/A"],
             "correct": 0
         },
         {
             "id": 18,
+            "type": "true_false",
             "question": "It is true receipts and payment is like a cash book.\n\nEvaluate this statement as True or False.",
             "options": ["True", "False", "N/A", "N/A"],
             "correct": 0
         },
         {
             "id": 19,
+            "type": "true_false",
             "question": "Cash discount is never recorded in the books of accounts.\n\nEvaluate this statement as True or False.",
             "options": ["True", "False", "N/A", "N/A"],
             "correct": 1
         },
         {
             "id": 20,
+            "type": "true_false",
             "question": "The software development expenses for a company engaging in software business is capital expenses if it is for sale.\n\nEvaluate this statement as True or False.",
             "options": ["True", "False", "N/A", "N/A"],
-            "correct": 0
+            "correct": 1
         },
         {
             "id": 21,
+            "type": "true_false",
             "question": "It is not compulsory to record all the business transaction in the books of accounts.\n\nEvaluate this statement as True or False.",
             "options": ["True", "False", "N/A", "N/A"],
             "correct": 1
         },
         {
-            "id": 25,
-            "question": "Balance Sheet Data:\n• Equity Share: Rs. 500,000\n• Pref. Shares: Rs. 200,000\n• General Reserve: Rs. 300,000\n• Secured Loan: Rs. 500,000\n• Creditors: Rs. 500,000\n• Total Liabilities: Rs. 2,000,000\n• Fixed Assets: Rs. 1,000,000\n• Stock: Rs. 200,000\n• Debtors: Rs. 600,000\n• Cash: Rs. 200,000\n• Total Assets: Rs. 2,000,000\n\nWhat is the Proprietary Ratio?",
+            "id": 22,
+            "type": "multiple_choice",
+            "question": "If person invest Rs.2,00,000 in our investment which pays 12% compounded annually. What will be the future value after 10 years?",
             "options": [
-                "(a) 0.3 (30%)",
-                "(b) 0.5 (50%)",
-                "(c) 0.7 (70%)",
-                "(d) 0.8 (80%)"
+                "(a) Rs. 6,21,200",
+                "(b) Rs. 5,00,000",
+                "(c) Rs. 6,42,200",
+                "(d) Rs. 8,10,500"
             ],
-            "correct": 1
+            "correct": 0
+        },
+        {
+            "id": 23,
+            "type": "multiple_choice",
+            "question": "PAT of the project is Rs.50 Lac, initial investment is Rs.500 Lac. What is the accounting rate of return (ARR)?",
+            "options": [
+                "(a) 5%",
+                "(b) 20%",
+                "(c) 10%",
+                "(d) 2%"
+            ],
+            "correct": 2
+        },
+        {
+            "id": 24,
+            "type": "multiple_choice",
+            "question": "Which of the following is a solvency ratio?",
+            "options": [
+                "(a) Liquidity Ratio",
+                "(b) Operating Ratio",
+                "(c) Capital Gearing Ratio",
+                "(d) Net Profit Ratio"
+            ],
+            "correct": 2
+        },
+        {
+            "id": 25,
+            "type": "text_input",
+            "question": "Calculate the Proprietary Ratio from the following Balance Sheet Data:\n\n• Equity Share: Rs. 500,000\n• Pref. Shares: Rs. 200,000\n• General Reserve: Rs. 300,000\n• Secured Loan: Rs. 500,000\n• Creditors: Rs. 500,000\n• Total Liabilities: Rs. 2,000,000\n• Fixed Assets: Rs. 1,000,000\n• Stock: Rs. 200,000\n• Debtors: Rs. 600,000\n• Cash: Rs. 200,000\n• Total Assets: Rs. 2,000,000\n\nEnter your answer as a decimal (e.g., 0.5) or percentage (e.g., 50%):",
+            "correct_answers": ["0.5", "50%", "50", "0.50", "50.0%", "50.0"],
+            "explanation": "Proprietary Ratio = Owner's Equity / Total Assets = (500,000 + 200,000 + 300,000) / 2,000,000 = 1,000,000 / 2,000,000 = 0.5 or 50%"
         }
     ]
 }
@@ -206,9 +396,9 @@ def start_quiz():
         if conn:
             cur = conn.cursor()
             cur.execute("""
-                INSERT INTO quiz_sessions (access_code, start_time, questions_data)
-                VALUES (%s, %s, %s)
-            """, (access_code, datetime.now(), json.dumps(questions)))
+                INSERT INTO quiz_sessions (access_code, start_time, questions_data, total_questions)
+                VALUES (%s, %s, %s, %s)
+            """, (access_code, datetime.now(), json.dumps(questions), len(questions)))
             
             conn.commit()
             cur.close()
@@ -327,11 +517,9 @@ def submit_answer():
         cur.close()
         conn.close()
         
-        print(f"Answer saved for session {access_code}, question {question_id}: {answer}")
         return jsonify({'success': True})
         
     except Exception as e:
-        print(f"Error submitting answer: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/submit_quiz', methods=['POST'])
@@ -364,17 +552,6 @@ def submit_quiz():
             conn.close()
             return jsonify({'success': False, 'error': 'Quiz already completed'})
         
-        # Mark as completed
-        cur.execute("""
-            UPDATE quiz_sessions 
-            SET completed = TRUE, end_time = %s 
-            WHERE access_code = %s
-        """, (datetime.now(), access_code))
-        
-        conn.commit()
-        cur.close()
-        conn.close()
-        
         # Calculate score
         questions = json.loads(result['questions_data'])
         answers = json.loads(result['answers_data'] or '{}')
@@ -383,10 +560,30 @@ def submit_quiz():
         for question in questions:
             question_id = str(question['id'])
             if question_id in answers:
-                if answers[question_id] == question['correct']:
-                    score += 1
+                user_answer = answers[question_id]
+                
+                # Handle different question types
+                if question.get('type') == 'text_input':
+                    # Check text input answers
+                    if check_text_answer(user_answer, question.get('correct_answers', [])):
+                        score += 1
+                else:
+                    # Handle multiple choice and true/false
+                    if user_answer == question['correct']:
+                        score += 1
         
         total = len(questions)
+        
+        # Mark as completed and store score
+        cur.execute("""
+            UPDATE quiz_sessions 
+            SET completed = TRUE, end_time = %s, score = %s, total_questions = %s
+            WHERE access_code = %s
+        """, (datetime.now(), score, total, access_code))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
         
         print(f"Quiz completed for session {access_code}. Score: {score}/{total}")
         
@@ -398,12 +595,11 @@ def submit_quiz():
         })
         
     except Exception as e:
-        print(f"Error submitting quiz: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/admin')
 def admin():
-    """Admin dashboard to monitor quiz sessions"""
+    """Admin dashboard to monitor quiz sessions and view results"""
     try:
         conn = get_db_connection()
         if not conn:
@@ -419,12 +615,25 @@ def admin():
             ORDER BY start_time DESC
         """)
         
-        sessions = cur.fetchall()
+        active_sessions_data = cur.fetchall()
+        
+        # Get completed sessions with results
+        cur.execute("""
+            SELECT access_code, start_time, end_time, score, total_questions, 
+                   questions_data, answers_data
+            FROM quiz_sessions 
+            WHERE completed = TRUE 
+            ORDER BY end_time DESC
+            LIMIT 20
+        """)
+        
+        completed_sessions_data = cur.fetchall()
         cur.close()
         conn.close()
         
+        # Process active sessions
         active_sessions = []
-        for session in sessions:
+        for session in active_sessions_data:
             elapsed = datetime.now() - session['start_time']
             time_remaining = QUIZ_DATA['time_limit'] - elapsed.total_seconds()
             
@@ -437,11 +646,123 @@ def admin():
                     'questions_answered': len(answers)
                 })
         
-        return render_template('admin.html', sessions=active_sessions)
+        # Process completed sessions
+        completed_sessions = []
+        for session in completed_sessions_data:
+            duration = 'N/A'
+            if session['end_time'] and session['start_time']:
+                duration_seconds = (session['end_time'] - session['start_time']).total_seconds()
+                duration_minutes = int(duration_seconds // 60)
+                duration = f"{duration_minutes} min"
+            
+            percentage = 0
+            if session['total_questions'] and session['total_questions'] > 0:
+                percentage = round((session['score'] / session['total_questions']) * 100, 1)
+            
+            completed_sessions.append({
+                'access_code': session['access_code'],
+                'start_time': session['start_time'].strftime('%Y-%m-%d %H:%M'),
+                'end_time': session['end_time'].strftime('%Y-%m-%d %H:%M') if session['end_time'] else 'N/A',
+                'duration': duration,
+                'score': session['score'] or 0,
+                'total': session['total_questions'] or 0,
+                'percentage': percentage
+            })
+        
+        return render_template('admin.html', 
+                             active_sessions=active_sessions, 
+                             completed_sessions=completed_sessions)
         
     except Exception as e:
         print(f"Error loading admin dashboard: {str(e)}")
         return f"Error loading admin dashboard: {str(e)}", 500
+
+@app.route('/quiz_details/<access_code>')
+def quiz_details(access_code):
+    """View detailed results for a specific quiz session"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return "Database connection failed", 500
+            
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT access_code, start_time, end_time, score, total_questions, 
+                   questions_data, answers_data, completed
+            FROM quiz_sessions 
+            WHERE access_code = %s
+        """, (access_code,))
+        
+        session = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if not session:
+            return f"Quiz session {access_code} not found", 404
+        
+        if not session['completed']:
+            return f"Quiz session {access_code} is still active", 400
+        
+        # Parse data
+        questions = json.loads(session['questions_data'])
+        answers = json.loads(session['answers_data'] or '{}')
+        
+        # Create detailed results
+        question_results = []
+        for i, question in enumerate(questions):
+            question_id = str(question['id'])
+            user_answer = answers.get(question_id, -1)
+            
+            # Handle different question types
+            if question.get('type') == 'text_input':
+                # Text input question
+                correct_answers = question.get('correct_answers', [])
+                is_correct = check_text_answer(user_answer, correct_answers)
+                user_answer_text = str(user_answer) if user_answer != -1 else "Not answered"
+                correct_answer_text = " or ".join(correct_answers[:3])  # Show first 3 correct answers
+                
+                question_results.append({
+                    'question_number': i + 1,
+                    'question_text': question['question'],
+                    'question_type': 'text_input',
+                    'user_answer': user_answer,
+                    'user_answer_text': user_answer_text,
+                    'correct_answer_text': correct_answer_text,
+                    'is_correct': is_correct,
+                    'explanation': question.get('explanation', '')
+                })
+            else:
+                # Multiple choice or true/false
+                correct_answer = question['correct']
+                is_correct = user_answer == correct_answer
+                
+                user_answer_text = "Not answered"
+                correct_answer_text = "N/A"
+                
+                if user_answer >= 0 and user_answer < len(question['options']):
+                    user_answer_text = question['options'][user_answer]
+                
+                if correct_answer >= 0 and correct_answer < len(question['options']):
+                    correct_answer_text = question['options'][correct_answer]
+                
+                question_results.append({
+                    'question_number': i + 1,
+                    'question_text': question['question'],
+                    'question_type': question.get('type', 'multiple_choice'),
+                    'options': question['options'],
+                    'user_answer': user_answer,
+                    'user_answer_text': user_answer_text,
+                    'correct_answer': correct_answer,
+                    'correct_answer_text': correct_answer_text,
+                    'is_correct': is_correct
+                })
+        
+        return render_template('quiz_details.html', 
+                             session=session, 
+                             question_results=question_results)
+        
+    except Exception as e:
+        return f"Error loading quiz details: {str(e)}", 500
 
 @app.route('/get_time_remaining/<access_code>')
 def get_time_remaining(access_code):
@@ -477,7 +798,6 @@ def get_time_remaining(access_code):
         })
         
     except Exception as e:
-        print(f"Error getting time remaining: {str(e)}")
         return jsonify({'error': str(e)})
 
 @app.route('/test')
@@ -491,11 +811,11 @@ def test():
             result = cur.fetchone()
             cur.close()
             conn.close()
-            return f"Flask app is working on Heroku! Time: {datetime.now()}, Sessions in DB: {result['session_count']}"
+            return f"Flask app is working on Heroku! Time: {datetime.now()}, Sessions in DB: {result['session_count']}, Total Questions: {len(QUIZ_DATA['questions'])}"
         else:
-            return f"Flask app is working but database connection failed! Time: {datetime.now()}"
+            return f"Flask app is working but database connection failed! Time: {datetime.now()}, Total Questions: {len(QUIZ_DATA['questions'])}"
     except Exception as e:
-        return f"Flask app is working but database error: {str(e)}. Time: {datetime.now()}"
+        return f"Flask app is working but database error: {str(e)}. Time: {datetime.now()}, Total Questions: {len(QUIZ_DATA['questions'])}"
 
 @app.route('/debug_sessions')
 def debug_sessions():
@@ -507,7 +827,7 @@ def debug_sessions():
             
         cur = conn.cursor()
         cur.execute("""
-            SELECT access_code, start_time, completed, 
+            SELECT access_code, start_time, completed, score, total_questions,
                    (EXTRACT(EPOCH FROM (NOW() - start_time))) as elapsed_seconds
             FROM quiz_sessions 
             ORDER BY start_time DESC 
@@ -521,38 +841,12 @@ def debug_sessions():
         return {
             'total_sessions': len(sessions),
             'sessions': [dict(session) for session in sessions],
+            'total_questions': len(QUIZ_DATA['questions']),
             'timestamp': datetime.now().isoformat()
         }
         
     except Exception as e:
         return {'error': str(e)}
-
-# Cleanup old sessions (optional background task)
-@app.route('/cleanup_old_sessions')
-def cleanup_old_sessions():
-    """Remove sessions older than 24 hours"""
-    try:
-        conn = get_db_connection()
-        if conn:
-            cur = conn.cursor()
-            
-            # Delete sessions older than 24 hours
-            cur.execute("""
-                DELETE FROM quiz_sessions 
-                WHERE start_time < NOW() - INTERVAL '24 hours'
-            """)
-            
-            deleted_count = cur.rowcount
-            conn.commit()
-            cur.close()
-            conn.close()
-            
-            return f"Cleaned up {deleted_count} old sessions"
-        else:
-            return "Database connection failed"
-            
-    except Exception as e:
-        return f"Cleanup error: {str(e)}"
 
 # Error handlers
 @app.errorhandler(404)
