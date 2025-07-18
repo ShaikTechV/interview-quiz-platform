@@ -1,9 +1,9 @@
 """
-FIXED Professional Quiz Platform in Python Flask with Postgres Database
-WORKING VERSION - All routing and template issues resolved
+WORKING Professional Quiz Platform in Python Flask with Postgres Database
+CLEAN VERSION - Template syntax fixed
 """
 
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, render_template, request, jsonify
 import json
 import time
 from datetime import datetime, timedelta
@@ -19,15 +19,11 @@ import re
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
 
-# Enable template debugging
-app.config['EXPLAIN_TEMPLATE_LOADING'] = True
-
 # Database connection
 def get_db_connection():
     """Get database connection using Heroku DATABASE_URL"""
     database_url = os.environ.get('DATABASE_URL')
     if database_url:
-        # Parse the DATABASE_URL
         url = urllib.parse.urlparse(database_url)
         conn = psycopg2.connect(
             database=url.path[1:],
@@ -39,17 +35,15 @@ def get_db_connection():
         )
         return conn
     else:
-        # For local development (fallback)
         return None
 
 def init_database():
-    """Initialize database tables and add missing columns if needed"""
+    """Initialize database tables"""
     try:
         conn = get_db_connection()
         if conn:
             cur = conn.cursor()
             
-            # Create quiz_sessions table with all required columns
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS quiz_sessions (
                     access_code VARCHAR(10) PRIMARY KEY,
@@ -64,7 +58,6 @@ def init_database():
                 )
             """)
             
-            # Create index for faster queries
             cur.execute("""
                 CREATE INDEX IF NOT EXISTS idx_quiz_sessions_completed 
                 ON quiz_sessions(completed, start_time)
@@ -295,43 +288,43 @@ QUIZ_DATA = {
         {
             "id": 16,
             "type": "true_false",
-            "question": "Drawing decrease the assets and decrease the liability.\n\nEvaluate this statement as True or False.",
-            "options": ["True", "False", "N/A", "N/A"],
+            "question": "Drawing decrease the assets and decrease the liability. Evaluate this statement as True or False.",
+            "options": ["True", "False"],
             "correct": 1
         },
         {
             "id": 17,
             "type": "true_false",
-            "question": "A, B, C started joint venture. A brought rs.10000, B Rs.20000, C Rs.30000 and opened joint bank account. Rs.10000 will be credited in joint bank a/c. on the name of A.\n\nEvaluate this statement as True or False.",
-            "options": ["True", "False", "N/A", "N/A"],
+            "question": "A, B, C started joint venture. A brought rs.10000, B Rs.20000, C Rs.30000 and opened joint bank account. Rs.10000 will be credited in joint bank a/c. on the name of A. Evaluate this statement as True or False.",
+            "options": ["True", "False"],
             "correct": 0
         },
         {
             "id": 18,
             "type": "true_false",
-            "question": "It is true receipts and payment is like a cash book.\n\nEvaluate this statement as True or False.",
-            "options": ["True", "False", "N/A", "N/A"],
+            "question": "It is true receipts and payment is like a cash book. Evaluate this statement as True or False.",
+            "options": ["True", "False"],
             "correct": 0
         },
         {
             "id": 19,
             "type": "true_false",
-            "question": "Cash discount is never recorded in the books of accounts.\n\nEvaluate this statement as True or False.",
-            "options": ["True", "False", "N/A", "N/A"],
+            "question": "Cash discount is never recorded in the books of accounts. Evaluate this statement as True or False.",
+            "options": ["True", "False"],
             "correct": 1
         },
         {
             "id": 20,
             "type": "true_false",
-            "question": "The software development expenses for a company engaging in software business is capital expenses if it is for sale.\n\nEvaluate this statement as True or False.",
-            "options": ["True", "False", "N/A", "N/A"],
+            "question": "The software development expenses for a company engaging in software business is capital expenses if it is for sale. Evaluate this statement as True or False.",
+            "options": ["True", "False"],
             "correct": 1
         },
         {
             "id": 21,
             "type": "true_false",
-            "question": "It is not compulsory to record all the business transaction in the books of accounts.\n\nEvaluate this statement as True or False.",
-            "options": ["True", "False", "N/A", "N/A"],
+            "question": "It is not compulsory to record all the business transaction in the books of accounts. Evaluate this statement as True or False.",
+            "options": ["True", "False"],
             "correct": 1
         },
         {
@@ -373,7 +366,7 @@ QUIZ_DATA = {
         {
             "id": 25,
             "type": "text_input",
-            "question": "Calculate the Proprietary Ratio from the following Balance Sheet Data:\n\n• Equity Share: Rs. 500,000\n• Pref. Shares: Rs. 200,000\n• General Reserve: Rs. 300,000\n• Secured Loan: Rs. 500,000\n• Creditors: Rs. 500,000\n• Total Liabilities: Rs. 2,000,000\n• Fixed Assets: Rs. 1,000,000\n• Stock: Rs. 200,000\n• Debtors: Rs. 600,000\n• Cash: Rs. 200,000\n• Total Assets: Rs. 2,000,000\n\nEnter your answer as a decimal (e.g., 0.5) or percentage (e.g., 50%):",
+            "question": "Calculate the Proprietary Ratio from the following Balance Sheet Data: Equity Share: Rs. 500,000, Pref. Shares: Rs. 200,000, General Reserve: Rs. 300,000, Secured Loan: Rs. 500,000, Creditors: Rs. 500,000, Total Liabilities: Rs. 2,000,000, Fixed Assets: Rs. 1,000,000, Stock: Rs. 200,000, Debtors: Rs. 600,000, Cash: Rs. 200,000, Total Assets: Rs. 2,000,000. Enter your answer as a decimal (e.g., 0.5) or percentage (e.g., 50%):",
             "correct_answers": ["0.5", "50%", "50", "0.50", "50.0%", "50.0"],
             "explanation": "Proprietary Ratio = Owner's Equity / Total Assets = (500,000 + 200,000 + 300,000) / 2,000,000 = 1,000,000 / 2,000,000 = 0.5 or 50%"
         }
@@ -390,14 +383,11 @@ def home():
 def start_quiz():
     """Create a new quiz session"""
     try:
-        # Generate a 6-character access code
         access_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
         
-        # Prepare questions (shuffle for security)
         questions = QUIZ_DATA['questions'].copy()
         random.shuffle(questions)
         
-        # Store in database
         conn = get_db_connection()
         if conn:
             cur = conn.cursor()
@@ -432,22 +422,14 @@ def start_quiz():
 
 @app.route('/quiz/<access_code>')
 def quiz_interface(access_code):
-    """
-    🎯 CANDIDATE QUIZ INTERFACE - Shows quiz questions to candidates
-    This route MUST render quiz.html and NEVER show results
-    """
+    """CANDIDATE QUIZ INTERFACE - Shows quiz questions to candidates"""
     print(f"🎯 CANDIDATE ACCESS: /quiz/{access_code}")
     
     try:
         conn = get_db_connection()
         if not conn:
             print("❌ Database connection failed")
-            error_html = f"""
-            <h1>Database Error</h1>
-            <p>Unable to connect to database.</p>
-            <p><a href='/'>Return to Home</a></p>
-            """
-            return error_html, 500
+            return "Database connection failed", 500
             
         cur = conn.cursor()
         cur.execute("""
@@ -462,30 +444,16 @@ def quiz_interface(access_code):
         
         if not session_data:
             print(f"❌ Session not found: {access_code}")
-            error_html = f"""
-            <h1>Invalid Access Code</h1>
-            <p>Quiz session <strong>{access_code}</strong> not found.</p>
-            <p>Please check your access code and try again.</p>
-            <p><a href='/'>Return to Home</a></p>
-            """
-            return error_html, 404
+            return f"Invalid access code: {access_code}", 404
         
-        # Check if quiz is completed
         if session_data['completed']:
             print(f"⚠️ Quiz already completed: {access_code}")
-            completed_html = f"""
-            <h1>Quiz Already Completed</h1>
-            <p>Quiz session <strong>{access_code}</strong> has already been completed.</p>
-            <p>Contact your administrator for results.</p>
-            <p><a href='/'>Return to Home</a></p>
-            """
-            return completed_html, 410
+            return f"Quiz session {access_code} has already been completed.", 410
         
         # Check if time expired
         elapsed = datetime.now() - session_data['start_time']
         if elapsed.total_seconds() > QUIZ_DATA['time_limit']:
             print(f"⏰ Quiz expired: {access_code}")
-            # Mark as completed due to timeout
             conn = get_db_connection()
             if conn:
                 cur = conn.cursor()
@@ -498,35 +466,21 @@ def quiz_interface(access_code):
                 cur.close()
                 conn.close()
             
-            expired_html = f"""
-            <h1>Quiz Time Expired</h1>
-            <p>Quiz session <strong>{access_code}</strong> has expired.</p>
-            <p>Time limit: {QUIZ_DATA['time_limit']/60} minutes</p>
-            <p><a href='/'>Return to Home</a></p>
-            """
-            return expired_html, 410
+            return f"Quiz session {access_code} has expired.", 410
         
-        # Load quiz questions for candidate
         questions = json.loads(session_data['questions_data'])
         
-        print(f"✅ LOADING QUIZ INTERFACE for candidate: {access_code}")
-        print(f"📝 Questions loaded: {len(questions)}")
-        print(f"🎯 Rendering template: quiz.html")
+        print(f"✅ LOADING QUIZ for candidate: {access_code}")
+        print(f"📝 Questions: {len(questions)}")
         
-        # CRITICAL: This MUST render quiz.html - the quiz interface for candidates
         return render_template('quiz.html', 
                              quiz_data=QUIZ_DATA,
                              questions=questions,
                              access_code=access_code)
                              
     except Exception as e:
-        print(f"❌ ERROR loading quiz interface: {str(e)}")
-        error_html = f"""
-        <h1>Error Loading Quiz</h1>
-        <p>Error: {str(e)}</p>
-        <p><a href='/'>Return to Home</a></p>
-        """
-        return error_html, 500
+        print(f"❌ ERROR loading quiz: {str(e)}")
+        return f"Error loading quiz: {str(e)}", 500
 
 @app.route('/submit_answer', methods=['POST'])
 def submit_answer():
@@ -545,7 +499,6 @@ def submit_answer():
             
         cur = conn.cursor()
         
-        # Get current answers
         cur.execute("""
             SELECT answers_data FROM quiz_sessions 
             WHERE access_code = %s AND completed = FALSE
@@ -557,7 +510,6 @@ def submit_answer():
             conn.close()
             return jsonify({'success': False, 'error': 'Invalid session'})
         
-        # Update answers
         current_answers = json.loads(result['answers_data'] or '{}')
         current_answers[str(question_id)] = answer
         
@@ -592,7 +544,6 @@ def submit_quiz():
             
         cur = conn.cursor()
         
-        # Get session data
         cur.execute("""
             SELECT questions_data, answers_data, completed
             FROM quiz_sessions 
@@ -620,19 +571,15 @@ def submit_quiz():
             if question_id in answers:
                 user_answer = answers[question_id]
                 
-                # Handle different question types
                 if question.get('type') == 'text_input':
-                    # Check text input answers
                     if check_text_answer(user_answer, question.get('correct_answers', [])):
                         score += 1
                 else:
-                    # Handle multiple choice and true/false
                     if user_answer == question['correct']:
                         score += 1
         
         total = len(questions)
         
-        # Mark as completed and store score
         cur.execute("""
             UPDATE quiz_sessions 
             SET completed = TRUE, end_time = %s, score = %s, total_questions = %s
@@ -658,7 +605,7 @@ def submit_quiz():
 
 @app.route('/admin')
 def admin_dashboard():
-    """👑 ADMIN DASHBOARD - Monitor quiz sessions and view results"""
+    """ADMIN DASHBOARD - Monitor quiz sessions"""
     print("👑 ADMIN ACCESS: /admin")
     
     try:
@@ -678,7 +625,7 @@ def admin_dashboard():
         
         active_sessions_data = cur.fetchall()
         
-        # Get completed sessions with results
+        # Get completed sessions
         cur.execute("""
             SELECT access_code, start_time, end_time, score, total_questions
             FROM quiz_sessions 
@@ -729,147 +676,19 @@ def admin_dashboard():
                 'percentage': percentage
             })
         
-        print(f"✅ ADMIN DASHBOARD loaded - Active: {len(active_sessions)}, Completed: {len(completed_sessions)}")
+        print(f"✅ ADMIN DASHBOARD - Active: {len(active_sessions)}, Completed: {len(completed_sessions)}")
         
         return render_template('admin.html', 
                              active_sessions=active_sessions, 
                              completed_sessions=completed_sessions)
         
     except Exception as e:
-        print(f"❌ ERROR loading admin dashboard: {str(e)}")
-        return f"Error loading admin dashboard: {str(e)}", 500
-
-@app.route('/results/<access_code>')
-def quiz_results(access_code):
-    """📊 ADMIN ONLY ROUTE - Detailed results for completed quiz sessions"""
-    print(f"📊 ADMIN VIEWING RESULTS: /results/{access_code}")
-    
-    try:
-        conn = get_db_connection()
-        if not conn:
-            return "Database connection failed", 500
-            
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT access_code, start_time, end_time, score, total_questions, 
-                   questions_data, answers_data, completed
-            FROM quiz_sessions 
-            WHERE access_code = %s
-        """, (access_code,))
-        
-        session = cur.fetchone()
-        cur.close()
-        conn.close()
-        
-        if not session:
-            return f"Quiz session {access_code} not found", 404
-        
-        if not session['completed']:
-            return f"Quiz session {access_code} is still active. Results not available yet.", 400
-        
-        # Parse data
-        questions = json.loads(session['questions_data'])
-        answers = json.loads(session['answers_data'] or '{}')
-        
-        # Create detailed results
-        question_results = []
-        for i, question in enumerate(questions):
-            question_id = str(question['id'])
-            user_answer = answers.get(question_id, -1)
-            
-            # Handle different question types
-            if question.get('type') == 'text_input':
-                # Text input question
-                correct_answers = question.get('correct_answers', [])
-                is_correct = check_text_answer(user_answer, correct_answers)
-                user_answer_text = str(user_answer) if user_answer != -1 else "Not answered"
-                correct_answer_text = " or ".join(correct_answers[:3])  # Show first 3 correct answers
-                
-                question_results.append({
-                    'question_number': i + 1,
-                    'question_text': question['question'],
-                    'question_type': 'text_input',
-                    'user_answer': user_answer,
-                    'user_answer_text': user_answer_text,
-                    'correct_answer_text': correct_answer_text,
-                    'is_correct': is_correct,
-                    'explanation': question.get('explanation', '')
-                })
-            else:
-                # Multiple choice or true/false
-                correct_answer = question['correct']
-                is_correct = user_answer == correct_answer
-                
-                user_answer_text = "Not answered"
-                correct_answer_text = "N/A"
-                
-                if user_answer >= 0 and user_answer < len(question['options']):
-                    user_answer_text = question['options'][user_answer]
-                
-                if correct_answer >= 0 and correct_answer < len(question['options']):
-                    correct_answer_text = question['options'][correct_answer]
-                
-                question_results.append({
-                    'question_number': i + 1,
-                    'question_text': question['question'],
-                    'question_type': question.get('type', 'multiple_choice'),
-                    'options': question['options'],
-                    'user_answer': user_answer,
-                    'user_answer_text': user_answer_text,
-                    'correct_answer': correct_answer,
-                    'correct_answer_text': correct_answer_text,
-                    'is_correct': is_correct
-                })
-        
-        print(f"✅ LOADING DETAILED RESULTS for admin: {access_code}")
-        
-        return render_template('quiz_details.html', 
-                             session=session, 
-                             question_results=question_results)
-        
-    except Exception as e:
-        print(f"❌ ERROR loading quiz results: {str(e)}")
-        return f"Error loading quiz details: {str(e)}", 500
-
-@app.route('/get_time_remaining/<access_code>')
-def get_time_remaining(access_code):
-    """API endpoint for timer updates during quiz"""
-    try:
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({'error': 'Database connection failed'})
-            
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT start_time, completed
-            FROM quiz_sessions 
-            WHERE access_code = %s
-        """, (access_code,))
-        
-        result = cur.fetchone()
-        cur.close()
-        conn.close()
-        
-        if not result:
-            return jsonify({'error': 'Invalid session'})
-        
-        if result['completed']:
-            return jsonify({'error': 'Quiz completed'})
-        
-        elapsed = datetime.now() - result['start_time']
-        time_remaining = QUIZ_DATA['time_limit'] - elapsed.total_seconds()
-        
-        return jsonify({
-            'time_remaining': max(0, int(time_remaining)),
-            'expired': time_remaining <= 0
-        })
-        
-    except Exception as e:
-        return jsonify({'error': str(e)})
+        print(f"❌ ERROR loading admin: {str(e)}")
+        return f"Error loading admin: {str(e)}", 500
 
 @app.route('/test')
 def test():
-    """Test route to verify Flask and database connectivity"""
+    """Test route"""
     try:
         conn = get_db_connection()
         if conn:
@@ -879,78 +698,18 @@ def test():
             cur.close()
             conn.close()
             return f"""
-            <h1>✅ System Status: WORKING</h1>
+            <h1>✅ System Working</h1>
             <p><strong>Time:</strong> {datetime.now()}</p>
             <p><strong>Sessions in DB:</strong> {result['session_count']}</p>
-            <p><strong>Total Questions:</strong> {len(QUIZ_DATA['questions'])}</p>
-            <p><a href='/'>Go to Home</a> | <a href='/admin'>Admin Dashboard</a></p>
+            <p><strong>Questions:</strong> {len(QUIZ_DATA['questions'])}</p>
+            <p><a href='/'>Home</a> | <a href='/admin'>Admin</a></p>
             """
         else:
-            return f"""
-            <h1>⚠️ Database Connection Failed</h1>
-            <p><strong>Time:</strong> {datetime.now()}</p>
-            <p><strong>Total Questions:</strong> {len(QUIZ_DATA['questions'])}</p>
-            <p>Flask app is working but cannot connect to database.</p>
-            """
+            return f"Database connection failed. Time: {datetime.now()}"
     except Exception as e:
-        return f"""
-        <h1>❌ System Error</h1>
-        <p><strong>Error:</strong> {str(e)}</p>
-        <p><strong>Time:</strong> {datetime.now()}</p>
-        """
-
-@app.route('/debug_sessions')
-def debug_sessions():
-    """Debug endpoint to check database sessions"""
-    try:
-        conn = get_db_connection()
-        if not conn:
-            return {'error': 'Database connection failed'}
-            
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT access_code, start_time, completed, score, total_questions,
-                   (EXTRACT(EPOCH FROM (NOW() - start_time))) as elapsed_seconds
-            FROM quiz_sessions 
-            ORDER BY start_time DESC 
-            LIMIT 10
-        """)
-        
-        sessions = cur.fetchall()
-        cur.close()
-        conn.close()
-        
-        return {
-            'total_sessions': len(sessions),
-            'sessions': [dict(session) for session in sessions],
-            'total_questions': len(QUIZ_DATA['questions']),
-            'timestamp': datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        return {'error': str(e)}
-
-# Error handlers
-@app.errorhandler(404)
-def not_found(error):
-    return f"""
-    <h1>404 - Page Not Found</h1>
-    <p>The page you requested was not found.</p>
-    <p><strong>URL:</strong> {request.url}</p>
-    <p><a href='/'>Return to Home</a></p>
-    """, 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    return f"""
-    <h1>500 - Internal Server Error</h1>
-    <p>An internal server error occurred.</p>
-    <p><strong>Error:</strong> {str(error)}</p>
-    <p><a href='/'>Return to Home</a></p>
-    """, 500
+        return f"Error: {str(e)}"
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    debug_mode = os.environ.get('FLASK_ENV') == 'development'
     print(f"🚀 Starting Flask app on port {port}")
-    app.run(host='0.0.0.0', port=port, debug=debug_mode)
+    app.run(host='0.0.0.0', port=port, debug=False)
